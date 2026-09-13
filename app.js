@@ -185,13 +185,16 @@
       S.view = 'admin'; S.admin = S.admin || { authed: false };
       render(); window.scrollTo(0, 0);
     },
-    adminLogin: function () {
+    adminLogin: function (ev) {
+      if (ev && ev.preventDefault) ev.preventDefault();
       var email = normEmail(val('ad-email'));
       var pw = val('ad-pw');
       S.admin = S.admin || {};
       if (!email || email.indexOf('@') < 0) { S.admin.error = 'Please enter your email address.'; render(); return false; }
       if (!pw) { S.admin.error = 'Please enter your password.'; render(); return false; }
-      S.admin.busy = true; S.admin.error = ''; render();
+      S.admin.busy = true; S.admin.error = '';
+      var loginBtn = document.getElementById('ad-login-btn');
+      if (loginBtn) { loginBtn.disabled = true; loginBtn.textContent = 'Signing in…'; }
       api('salt', { email: email }).then(function (r) {
         if (!r.salt) throw new Error('No account found for this email.');
         return sha256Hex(r.salt + ':' + pw).then(function (hash) {
@@ -808,10 +811,10 @@
     return '<div class="authcard"><p class="kicker">Admin</p><h2 class="title">Admin sign in</h2>' +
       '<p class="sub">Staff only. Bookings data loads after sign in.</p>' +
       (a.error ? '<div class="error">' + esc(a.error) + '</div>' : '') +
-      '<form onsubmit="return App.adminLogin()">' +
+      '<form onsubmit="return App.adminLogin(event)">' +
       '<label class="field"><span>Admin email</span><input id="ad-email" type="email" autocomplete="username" value="' + esc(a.email || '') + '"></label>' +
       '<label class="field"><span>Password</span><input id="ad-pw" type="password" autocomplete="current-password"></label>' +
-      '<button class="cta" type="submit"' + (a.loading ? ' disabled' : '') + '>' + (a.loading ? 'Signing in…' : 'Sign in') + '</button>' +
+      '<button id="ad-login-btn" class="cta" type="submit"' + (a.busy ? ' disabled' : '') + '>' + (a.busy ? 'Signing in…' : 'Sign in') + '</button>' +
       '</form></div>';
   }
   function renderAdmin() {
