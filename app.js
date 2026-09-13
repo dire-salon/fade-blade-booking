@@ -202,20 +202,76 @@
         S.admin.busy = false; S.admin.loading = false;
         if (!data || !data.ok) throw new Error('Not authorized.');
         S.admin.authed = true; S.admin.sheet = data.bookings || [];
+        S.admin.tab = 'upcoming'; S.admin.q = ''; S.admin.dateF = '';
+        var _now = new Date();
+        S.admin.calY = _now.getFullYear(); S.admin.calM = _now.getMonth() + 1;
+        S.admin.calCache = {}; S.admin.calDay = ''; S.admin.calLoading = false;
+        S.admin.customers = null; S.admin.custQ = ''; S.admin.custLoading = false;
+        S.admin.mailOpen = false;
         render(); window.scrollTo(0, 0);
       }).catch(function (err) {
         S.admin.busy = false; S.admin.loading = false; S.admin.error = err.message; render();
       });
       return false;
     },
+    adminTab: function (t) {
+      var a = S.admin; if (!a || !a.authed) return;
+      a.tab = t; a.error = ''; render();
+      if (t === 'calendar' && !a.calCache[calKey(a.calY, a.calM)]) loadCalMonth(a, a.calY, a.calM);
+      if (t === 'customers' && !a.customers) loadCustomers(a);
+      window.scrollTo(0, 0);
+    },
     adminRefresh: function () {
-      if (!S.admin || !S.admin.authed) return;
-      S.admin.loading = true; S.admin.error = ''; render();
-      api('timesheet', { email: S.admin.email, hash: S.admin.hash }).then(function (data) {
-        S.admin.loading = false;
-        if (!data || !data.ok) throw new Error('Not authorized.');
-        S.admin.sheet = data.bookings || []; render();
-      }).catch(function (err) { S.admin.loading = false; S.admin.error = err.message; render(); });
+      var a = S.admin; if (!a || !a.authed) return;
+      a.error = '';
+      if (a.tab === 'calendar') {
+        delete a.calCache[calKey(a.calY, a.calM)]; a.calLoading = false;
+        loadCalMonth(a, a.calY, a.calM);
+      } else if (a.tab === 'customers') {
+        a.customers = null; a.custLoading = false; loadCustomers(a);
+      } else {
+        a.loading = true; render();
+        api('timesheet', { email: a.email, hash: a.hash }).then(function (data) {
+          a.loading = false;
+          if (!data || !data.ok) throw new Error('Not authorized.');
+          a.sheet = data.bookings || []; render();
+        }).catch(function (err) { a.loading = false; a.error = err.message; render(); });
+      }
+    },
+    adminCalNav: function (d) {
+      var a = S.admin; if (!a) return;
+      var m = a.calM + d, y = a.calY;
+      if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+      a.calM = m; a.calY = y; a.calDay = ''; a.error = ''; render();
+      loadCalMonth(a, y, m);
+    },
+    adminCalDay: function (ds) {
+      var a = S.admin; if (!a) return;
+      a.calDay = (a.calDay === ds) ? '' : ds; render();
+    },
+    adminSearch: function (v) { var a = S.admin; if (!a) return; a.q = v; render(); refocus('adm-q'); },
+    adminCustQ: function (v) { var a = S.admin; if (!a) return; a.custQ = v; render(); refocus('adm-cq'); },
+    adminDateF: function (v) { var a = S.admin; if (!a) return; a.dateF = v; render(); },
+    openMailer: function (btn) {
+      var a = S.admin; if (!a) return;
+      a.mailOpen = true;
+      a.mailTo = btn.getAttribute('data-email'); a.mailName = btn.getAttribute('data-name');
+      a.mailSubject = ''; a.mailBody = ''; a.mailDone = ''; a.mailError = ''; a.mailBusy = false;
+      render();
+    },
+    closeMailer: function () { var a = S.admin; if (!a) return; a.mailOpen = false; render(); },
+    sendMail: function () {
+      var a = S.admin; if (!a || a.mailBusy) return;
+      a.mailSubject = val('mail-subj'); a.mailBody = val('mail-body');
+      if (!a.mailSubject.trim()) { a.mailError = 'Add a subject.'; render(); return; }
+      if (!a.mailBody.trim()) { a.mailError = 'Write a message first.'; render(); return; }
+      a.mailBusy = true; a.mailError = ''; a.mailDone = ''; render();
+      api('adminemail', { email: a.email, hash: a.hash, to: a.mailTo, subject: a.mailSubject.trim(), body: a.mailBody.trim() }).then(function (data) {
+        a.mailBusy = false;
+        if (!data || !data.ok) throw new Error('Could not send. Please try again.');
+        a.mailDone = 'Email sent to ' + (a.mailName || a.mailTo) + '.';
+        a.mailSubject = ''; a.mailBody = ''; render();
+      }).catch(function (err) { a.mailBusy = false; a.mailError = err.message; render(); });
     },
     adminSignOut: function () { S.admin = null; App.goHome(); },
     setTab: function (mode) { S.authMode = mode; S.authError = ''; render(); },
@@ -700,14 +756,168 @@
     return body + '</div>';
   }
 
-  function renderSheetRow(b) {
+  /* ---------- admin dashboard ---------- */
+  function calKey(y, m) { return y + '-' + m; }
+  function dayBookings(list, ds) {
+    return (list || []).filter(function (b) { return b.time && tzDateStr(b.time) === ds; });
+  }
+  function monthName(y, m) { return new Date(y, m - 1, 1).toLocaleString(undefined, { month: 'long' }); }
+  function prettyDay(ds) {
+    return new Date(ds + 'T12:00:00').toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+  function refocus(id) {
+    var el = document.getElementById(id);
+    if (el) { try { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } catch (e) {} }
+  }
+  function loadCalMonth(a, y, m) {
+    var k = calKey(y, m);
+    if (a.calCache[k] || a.calLoading) return;
+    a.calLoading = true; a.error = ''; render();
+    api('monthbookings', { email: a.email, hash: a.hash, year: y, month: m }).then(function (data) {
+      a.calLoading = false;
+      if (!data || !data.ok) throw new Error('Not authorized.');
+      a.calCache[k] = data.bookings || []; render();
+    }).catch(function (err) { a.calLoading = false; a.error = err.message; render(); });
+  }
+  function loadCustomers(a) {
+    if (a.customers || a.custLoading) return;
+    a.custLoading = true; a.error = ''; render();
+    api('customers', { email: a.email, hash: a.hash }).then(function (data) {
+      a.custLoading = false;
+      if (!data || !data.ok) throw new Error('Not authorized.');
+      a.customers = data.customers || []; render();
+    }).catch(function (err) { a.custLoading = false; a.error = err.message; render(); });
+  }
+  function mailButton(email, name) {
+    if (!email) return '';
+    return '<div class="apptactions"><button type="button" class="minibtn" data-email="' + esc(email) +
+      '" data-name="' + esc(name || '') + '" onclick="App.openMailer(this)">Email</button></div>';
+  }
+  function renderAdminRow(b) {
     var when = b.time ? apptWhen(b.time) : '';
     return '<div class="apptcard"><div class="apptmain"><strong class="appttitle">' + esc(b.name || '—') + '</strong>' +
       '<span class="apptwhen">' + esc(when) + '</span>' +
-      (b.style ? '<span class="apptstyle">' + esc(b.style) + '</span>' : '') +
       (b.phone ? '<span class="apptmeta">' + esc(b.phone) + '</span>' : '') +
       (b.email ? '<span class="apptmeta">' + esc(b.email) + '</span>' : '') +
-      '</div></div>';
+      '</div>' + mailButton(b.email, b.name) + '</div>';
+  }
+  function renderUpcoming(a) {
+    var q = (a.q || '').toLowerCase();
+    var rows = (a.sheet || []).filter(function (b) {
+      if (a.dateF && (!b.time || tzDateStr(b.time) !== a.dateF)) return false;
+      if (!q) return true;
+      return (b.name || '').toLowerCase().indexOf(q) >= 0 ||
+        (b.phone || '').toLowerCase().indexOf(q) >= 0 ||
+        (b.email || '').toLowerCase().indexOf(q) >= 0;
+    });
+    var h = '<div class="stat3">' +
+      '<div class="stat"><b>' + (a.sheet || []).length + '</b><span>Upcoming</span></div>' +
+      '<div class="stat"><b>' + dayBookings(a.sheet, todayStr()).length + '</b><span>Today</span></div>' +
+      '<div class="stat"><b>' + (a.customers ? a.customers.length : '—') + '</b><span>Customers</span></div></div>';
+    h += '<div class="admtools"><input id="adm-q" class="admq grow" type="search" placeholder="Search name, phone, email…" value="' +
+      esc(a.q || '') + '" oninput="App.adminSearch(this.value)">' +
+      '<input id="adm-date" class="admdate" type="date" value="' + esc(a.dateF || '') +
+      '" onchange="App.adminDateF(this.value)" aria-label="Filter by date"></div>';
+    if (a.loading) h += '<div class="skel"><div class="shimmer"></div>Loading…</div>';
+    else if (!rows.length) h += '<div class="emptystate"><p>No bookings match.</p></div>';
+    else h += '<p class="sub">' + rows.length + ' shown</p>' + rows.map(renderAdminRow).join('');
+    return h;
+  }
+  function renderCalendar(a) {
+    var y = a.calY, m = a.calM, k = calKey(y, m);
+    var list = a.calCache[k];
+    var counts = {};
+    (list || []).forEach(function (b) {
+      if (b.time) { var ds = tzDateStr(b.time); counts[ds] = (counts[ds] || 0) + 1; }
+    });
+    var first = new Date(y, m - 1, 1).getDay();
+    var dim = new Date(y, m, 0).getDate();
+    var tds = todayStr();
+    var h = '<div class="calhead"><button type="button" class="calnav" onclick="App.adminCalNav(-1)" aria-label="Previous month">‹</button>' +
+      '<h3>' + monthName(y, m) + ' ' + y + '</h3>' +
+      '<button type="button" class="calnav" onclick="App.adminCalNav(1)" aria-label="Next month">›</button></div>';
+    h += '<div class="caldow"><span>SU</span><span>MO</span><span>TU</span><span>WE</span><span>TH</span><span>FR</span><span>SA</span></div><div class="calgrid">';
+    for (var i = 0; i < first; i++) h += '<div class="calday blank"></div>';
+    for (var d = 1; d <= dim; d++) {
+      var ds = y + '-' + pad(m) + '-' + pad(d);
+      var c = counts[ds] || 0, sun = isSunday(ds);
+      var cls = 'calday' + (sun ? ' calsun' : '') + (ds === tds ? ' caltoday' : '') + (ds === a.calDay ? ' calsel' : '');
+      h += '<button type="button" class="' + cls + '" onclick="App.adminCalDay(\'' + ds + '\')"><span class="n">' + d + '</span>' +
+        (sun ? '<span class="calclosed">Closed</span>' : (c ? '<span class="calbadge">' + c + ' booked</span>' : '')) + '</button>';
+    }
+    h += '</div>';
+    if (a.calLoading) h += '<div class="skel"><div class="shimmer"></div>Loading…</div>';
+    else if (a.error) h += '<div class="error">' + esc(a.error) + '</div>';
+    if (a.calDay) {
+      var dayList = dayBookings(list, a.calDay);
+      h += '<div class="daypanel"><h3 class="h3">' + esc(prettyDay(a.calDay)) + ' · ' + dayList.length + ' booked</h3>';
+      h += dayList.length ? dayList.map(renderAdminRow).join('') : '<div class="emptystate"><p>No bookings this day.</p></div>';
+      h += '</div>';
+    } else {
+      h += '<p class="note">Tap a day to see who booked.</p>';
+    }
+    return h;
+  }
+  function renderCustomers(a) {
+    var q = (a.custQ || '').toLowerCase();
+    var list = (a.customers || []).filter(function (c) {
+      if (!q) return true;
+      return (c.name || '').toLowerCase().indexOf(q) >= 0 ||
+        (c.phone || '').toLowerCase().indexOf(q) >= 0 ||
+        (c.email || '').toLowerCase().indexOf(q) >= 0;
+    });
+    var h = '<div class="admtools"><input id="adm-cq" class="admq grow" type="search" placeholder="Search customers…" value="' +
+      esc(a.custQ || '') + '" oninput="App.adminCustQ(this.value)"></div>';
+    if (a.custLoading) h += '<div class="skel"><div class="shimmer"></div>Loading…</div>';
+    else if (a.error) h += '<div class="error">' + esc(a.error) + '</div>';
+    else if (!list.length) h += '<div class="emptystate"><p>No customers found.</p></div>';
+    else {
+      h += '<p class="sub">' + list.length + ' customers</p>' + list.map(function (c) {
+        return '<div class="apptcard"><div class="apptmain"><strong class="appttitle">' + esc(c.name || '—') + '</strong>' +
+          (c.phone ? '<span class="apptmeta">' + esc(c.phone) + '</span>' : '') +
+          (c.email ? '<span class="apptmeta">' + esc(c.email) + '</span>' : '') +
+          '</div>' + mailButton(c.email, c.name) + '</div>';
+      }).join('');
+    }
+    return h;
+  }
+  function renderMailer(a) {
+    var h = '<div class="mailwrap"><div class="mailcard">';
+    h += '<p class="kicker">Email customer</p><p class="sub" style="margin-bottom:4px"><strong>' +
+      esc(a.mailName || a.mailTo) + '</strong><br>' + esc(a.mailTo) + '</p>';
+    if (a.mailDone) h += '<div class="mailsent">' + esc(a.mailDone) + '</div>';
+    if (a.mailError) h += '<div class="error">' + esc(a.mailError) + '</div>';
+    h += '<label class="field"><span>Subject</span><input id="mail-subj" maxlength="120" value="' +
+      esc(a.mailSubject || '') + '" placeholder="Subject"></label>';
+    h += '<label class="field"><span>Message</span><textarea id="mail-body" maxlength="2000" placeholder="Write your message…">' +
+      esc(a.mailBody || '') + '</textarea></label>';
+    h += '<div class="mailrow"><button type="button" class="cta" style="flex:1;margin:0"' +
+      (a.mailBusy ? ' disabled' : '') + ' onclick="App.sendMail()">' + (a.mailBusy ? 'Sending…' : 'Send email') + '</button>' +
+      '<button type="button" class="btn-outline" onclick="App.closeMailer()">Close</button></div>';
+    h += '</div></div>';
+    return h;
+  }
+  function renderAdminDash(a) {
+    var tabs = [['upcoming', 'Upcoming'], ['calendar', 'Calendar'], ['customers', 'Customers']];
+    var h = '<div class="accthead"><div><p class="kicker">Admin</p><h2 class="title">Dashboard</h2>' +
+      '<p class="sub">' + esc(a.email) + '</p></div>' +
+      '<div class="rowbtns"><button type="button" class="btn-outline" onclick="App.adminRefresh()">Refresh</button>' +
+      '<button type="button" class="btn-outline" onclick="App.adminSignOut()">Sign out</button></div></div>';
+    h += '<div class="admtabs">' + tabs.map(function (t) {
+      return '<button type="button" class="admtab' + (a.tab === t[0] ? ' admtab-on' : '') +
+        '" onclick="App.adminTab(\'' + t[0] + '\')">' + t[1] + '</button>';
+    }).join('') + '</div>';
+    if (a.tab === 'calendar') {
+      if (!a.calCache[calKey(a.calY, a.calM)] && !a.calLoading) loadCalMonth(a, a.calY, a.calM);
+      h += renderCalendar(a);
+    } else if (a.tab === 'customers') {
+      if (!a.customers && !a.custLoading) loadCustomers(a);
+      h += renderCustomers(a);
+    } else {
+      h += renderUpcoming(a);
+    }
+    if (a.mailOpen) h += renderMailer(a);
+    return h;
   }
 
   function renderAdmin() {
@@ -722,20 +932,7 @@
         (a.error ? '<div class="error">' + esc(a.error) + '</div>' : '') +
         '<button type="submit" class="cta"' + (a.busy ? ' disabled' : '') + '>' + (a.busy ? 'Please wait…' : 'Sign in') + '</button></form>';
     } else {
-      var rows = a.sheet || [];
-      body += '<div class="accthead"><div><p class="kicker">Timesheet</p><h2 class="title">Upcoming bookings</h2>' +
-        '<p class="sub">' + rows.length + ' upcoming · ' + esc(a.email) + '</p></div>' +
-        '<div class="rowbtns"><button type="button" class="btn-outline" onclick="App.adminRefresh()">Refresh</button>' +
-        '<button type="button" class="btn-outline" onclick="App.adminSignOut()">Sign out</button></div></div>';
-      if (a.loading) {
-        body += '<div class="skel"><div class="shimmer"></div>Loading…</div>';
-      } else if (a.error) {
-        body += '<div class="error">' + esc(a.error) + '</div>';
-      } else if (!rows.length) {
-        body += '<div class="emptystate"><p>No upcoming bookings.</p></div>';
-      } else {
-        body += rows.map(renderSheetRow).join('');
-      }
+      body += renderAdminDash(a);
     }
     return body + '</div>';
   }
