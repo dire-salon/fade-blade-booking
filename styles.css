@@ -89,6 +89,12 @@ main { flex: 1; padding-bottom: 110px; }
 
 .linkback { background: none; border: none; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; padding: 0; margin-bottom: 14px; }
 .linkback:hover { color: var(--text); }
+.footadmin { margin-top: 10px; }
+.linklike { background: none; border: none; color: var(--faint); font-size: 12px; cursor: pointer; padding: 4px 8px; text-decoration: underline; }
+.linklike:hover { color: var(--gold); }
+.rowbtns { display: flex; gap: 8px; }
+.apptstyle { display: block; color: var(--gold); font-size: 13.5px; font-weight: 600; margin-top: 2px; }
+.apptmeta { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
 .inlinelink { background: none; border: none; padding: 0; cursor: pointer; color: var(--gold); font-weight: 700; font-size: inherit; text-decoration: underline; }
 
 /* ---------- buttons / fields ---------- */

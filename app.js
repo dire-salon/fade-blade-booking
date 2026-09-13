@@ -14,7 +14,6 @@
     { id: 'beard', name: 'Beard Sculpt', price: '$20', mins: '20 min', desc: 'Razor-sharp edges, hot-towel finish', img: 'assets/style-beard.jpg?v=3' },
     { id: 'kids', name: 'Kids Cut', price: '$25', mins: '30 min', desc: 'Patient and kid-friendly, 12 & under', img: 'assets/style-kids.jpg?v=3' }
   ];
-  var CARRIERS = ['AT&T', 'Verizon', 'T-Mobile', 'Sprint', 'Boost Mobile', 'Cricket', 'Metro by T-Mobile', 'US Cellular', 'Google Fi'];
   var BIZ_ADDR = '946 Sligo Ave, Silver Spring, MD 20910';
   var GARAGE_ADDR = '8100 Fenton St, Silver Spring, MD 20910';
   var MAPS_URL = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(BIZ_ADDR);
@@ -144,6 +143,7 @@
     forgot: null,
     bookings: [], bookingsLoading: false, bookingsError: '',
     resched: null,
+    admin: null,
     quickBusy: false, quickError: '', quickDone: false
   };
 
@@ -181,6 +181,43 @@
       clearSession(); S.account = null; S.bookings = []; S.resched = null;
       App.goHome();
     },
+    goAdmin: function () {
+      S.view = 'admin'; S.admin = S.admin || { authed: false };
+      render(); window.scrollTo(0, 0);
+    },
+    adminLogin: function () {
+      var email = normEmail(val('ad-email'));
+      var pw = val('ad-pw');
+      S.admin = S.admin || {};
+      if (!email || email.indexOf('@') < 0) { S.admin.error = 'Please enter your email address.'; render(); return false; }
+      if (!pw) { S.admin.error = 'Please enter your password.'; render(); return false; }
+      S.admin.busy = true; S.admin.error = ''; render();
+      api('salt', { email: email }).then(function (r) {
+        if (!r.salt) throw new Error('No account found for this email.');
+        return sha256Hex(r.salt + ':' + pw).then(function (hash) {
+          S.admin.hash = hash; S.admin.email = email;
+          return api('timesheet', { email: email, hash: hash });
+        });
+      }).then(function (data) {
+        S.admin.busy = false; S.admin.loading = false;
+        if (!data || !data.ok) throw new Error('Not authorized.');
+        S.admin.authed = true; S.admin.sheet = data.bookings || [];
+        render(); window.scrollTo(0, 0);
+      }).catch(function (err) {
+        S.admin.busy = false; S.admin.loading = false; S.admin.error = err.message; render();
+      });
+      return false;
+    },
+    adminRefresh: function () {
+      if (!S.admin || !S.admin.authed) return;
+      S.admin.loading = true; S.admin.error = ''; render();
+      api('timesheet', { email: S.admin.email, hash: S.admin.hash }).then(function (data) {
+        S.admin.loading = false;
+        if (!data || !data.ok) throw new Error('Not authorized.');
+        S.admin.sheet = data.bookings || []; render();
+      }).catch(function (err) { S.admin.loading = false; S.admin.error = err.message; render(); });
+    },
+    adminSignOut: function () { S.admin = null; App.goHome(); },
     setTab: function (mode) { S.authMode = mode; S.authError = ''; render(); },
     pickDate: function (d) { if (isSunday(d)) return; S.date = d; S.time = ''; S.error = ''; render(); loadTaken(); },
     pickTime: function (t) { S.time = t; S.error = ''; render(); },
@@ -238,15 +275,13 @@
     var name = val('f-name').trim();
     var email = normEmail(val('f-email'));
     var phone = digitsOnly(val('f-phone'));
-    var carrier = val('f-carrier');
     if (!name) return setError('Please enter your name.');
     if (!email || email.indexOf('@') < 0) return setError('Please enter a valid email address.');
     if (phone.length < 7) return setError('Please enter a valid phone number.');
-    if (!carrier) return setError('Please select your mobile carrier so we can text your confirmation.');
     var st = styleById(S.selectedStyle);
     S.submitting = true; S.error = ''; render();
     api('book', {
-      name: name, email: email, phone: phone, carrier: carrier,
+      name: name, email: email, phone: phone,
       title: st ? name + ' — ' + st.name : name,
       date: S.date,
       timeISO: wallToISO(S.date, S.time),
@@ -255,7 +290,7 @@
       S.submitting = false;
       if (!data || !data.id) throw new Error('Booking did not complete. Please try again.');
       S.confirm = {
-        id: data.id, name: name, email: email, phone: phone, carrier: carrier,
+        id: data.id, name: name, email: email, phone: phone,
         date: S.date, time: S.time, style: st ? st.name : '', stylePrice: st ? st.price : ''
       };
       S.step = 3; render(); window.scrollTo(0, 0);
@@ -281,7 +316,7 @@
     }).then(function (data) {
       S.authBusy = false;
       if (!data || !data.ok) throw new Error('Signup did not complete. Please try again.');
-      S.account = { name: data.name, email: data.email, phone: data.phone, carrier: data.carrier };
+      S.account = { name: data.name, email: data.email, phone: data.phone };
       saveSession(S.account);
       App.goMyBookings();
     }).catch(function (err) { S.authBusy = false; S.authError = err.message; render(); });
@@ -292,7 +327,6 @@
     var name = val('a-name').trim();
     var email = normEmail(val('a-email'));
     var phone = digitsOnly(val('a-phone'));
-    var carrier = val('a-carrier');
     var pw = val('a-pw'), pw2 = val('a-pw2');
     if (!name) { S.authError = 'Please enter your name.'; render(); return false; }
     if (!email || email.indexOf('@') < 0) { S.authError = 'Please enter a valid email address.'; render(); return false; }
@@ -302,10 +336,10 @@
     S.authBusy = true; S.authError = ''; render();
     var salt = randomSalt();
     sha256Hex(salt + ':' + pw).then(function (hash) {
-      return api('signup', { name: name, email: email, phone: phone, carrier: carrier, salt: salt, hash: hash });
+      return api('signup', { name: name, email: email, phone: phone, salt: salt, hash: hash });
     }).then(function (data) {
       S.authBusy = false;
-      S.account = { name: data.name, email: data.email, phone: data.phone, carrier: data.carrier };
+      S.account = { name: data.name, email: data.email, phone: data.phone };
       saveSession(S.account);
       App.goMyBookings();
     }).catch(function (err) { S.authBusy = false; S.authError = err.message; render(); });
@@ -320,11 +354,11 @@
     var salt = randomSalt();
     var c = S.confirm;
     sha256Hex(salt + ':' + pw).then(function (hash) {
-      return api('signup', { name: c.name, email: c.email, phone: c.phone, carrier: c.carrier, salt: salt, hash: hash });
+      return api('signup', { name: c.name, email: c.email, phone: c.phone, salt: salt, hash: hash });
     }).then(function (data) {
       S.quickBusy = false; S.quickDone = true;
       if (!data || !data.ok) throw new Error('Signup did not complete. Please try again.');
-      S.account = { name: data.name, email: data.email, phone: data.phone, carrier: data.carrier };
+      S.account = { name: data.name, email: data.email, phone: data.phone };
       saveSession(S.account);
       render();
     }).catch(function (err) { S.quickBusy = false; S.quickError = err.message; render(); });
@@ -507,12 +541,13 @@
       '<section class="section"><p class="kicker">03 — Visit</p><h2 class="title">Find the shop</h2><div class="visitcard">' +
       '<div class="visitrow"><span class="visitlabel">Location</span><div><strong>946 Sligo Ave</strong><p>Silver Spring, MD 20910</p></div></div>' +
       '<div class="visitrow"><span class="visitlabel">Parking</span><div><strong>Parking garage</strong><p>' + GARAGE_ADDR + '</p></div></div>' +
-      '<div class="visitrow"><span class="visitlabel">Hours</span><div><strong>Mon–Fri 9a–7p · Sat 9a–5p · Sun 10a–4p</strong><p>Walk-ins welcome; bookings get priority.</p></div></div>' +
+      '<div class="visitrow"><span class="visitlabel">Hours</span><div><strong>Mon–Fri 9a–7p · Sat 9a–5p · Sun Closed</strong><p>Walk-ins welcome; bookings get priority.</p></div></div>' +
       '<div class="visitbtns"><a class="btn-primary" href="' + MAPS_URL + '" target="_blank" rel="noreferrer">Get directions</a>' +
       '<button type="button" class="btn-outline" onclick="App.copyAddress()">Copy address</button></div>' +
       '</div></section>' +
       '<footer class="homefooter"><div class="footbrand"><span class="mono">DS</span><span class="footname">Dire Salon</span></div>' +
-      '<p>' + BIZ_ADDR + '<br>Parking garage nearby · Book in 30 seconds</p></footer>' +
+      '<p>' + BIZ_ADDR + '<br>Parking garage nearby · Book in 30 seconds</p>' +
+      '<p class="footadmin"><button type="button" class="linklike" onclick="App.goAdmin()">Admin</button></p></footer>' +
       '</div>';
   }
 
@@ -539,9 +574,6 @@
   function renderDetails() {
     var st = styleById(S.selectedStyle);
     var acct = S.account;
-    var carrierOpts = '<option value="">Select carrier…</option>' + CARRIERS.map(function (c) {
-      return '<option value="' + esc(c) + '"' + (acct && acct.carrier === c ? ' selected' : '') + '>' + esc(c) + '</option>';
-    }).join('');
     return '<div class="anim"><form onsubmit="return App.submitDetails()">' +
       '<button type="button" class="linkback" onclick="App.backToSchedule()">← Change time</button>' +
       '<p class="kicker">Booking</p><h2 class="title">Your details</h2>' +
@@ -553,7 +585,6 @@
       '<label class="field"><span>Full name</span><input id="f-name" type="text" maxlength="255" autocomplete="name" placeholder="Your full name" value="' + esc(acct ? acct.name : '') + '"></label>' +
       '<label class="field"><span>Email</span><input id="f-email" type="email" maxlength="255" autocomplete="email" inputmode="email" placeholder="you@example.com" value="' + esc(acct ? acct.email : '') + '"></label>' +
       '<label class="field"><span>Phone</span><input id="f-phone" type="tel" maxlength="30" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567" value="' + esc(acct ? acct.phone : '') + '"></label>' +
-      '<label class="field"><span>Mobile carrier</span><select id="f-carrier">' + carrierOpts + '</select></label>' +
       '<p class="note">One booking per email or phone number, per day.</p>' +
       '</form></div>';
   }
@@ -589,9 +620,6 @@
 
   function renderAuth() {
     var isSignup = S.authMode === 'signup';
-    var carrierOpts = '<option value="">Select carrier…</option>' + CARRIERS.map(function (c) {
-      return '<option value="' + esc(c) + '">' + esc(c) + '</option>';
-    }).join('');
     return '<div class="anim center"><button type="button" class="linkback" onclick="App.goHome()">← Back</button>' +
       '<p class="kicker">' + (isSignup ? 'Create account' : 'Welcome back') + '</p>' +
       '<h2 class="title">' + (isSignup ? 'Sign up in seconds' : 'Sign in') + '</h2>' +
@@ -603,7 +631,6 @@
       (isSignup ? '<label class="field"><span>Full name</span><input id="a-name" type="text" maxlength="255" autocomplete="name" placeholder="Your full name"></label>' : '') +
       '<label class="field"><span>Email</span><input id="a-email" type="email" maxlength="255" autocomplete="email" inputmode="email" placeholder="you@example.com"></label>' +
       (isSignup ? '<label class="field"><span>Phone</span><input id="a-phone" type="tel" maxlength="30" autocomplete="tel" inputmode="tel" placeholder="(555) 123-4567"></label>' : '') +
-      (isSignup ? '<label class="field"><span>Mobile carrier <i>(optional)</i></span><select id="a-carrier">' + carrierOpts + '</select></label>' : '') +
       '<label class="field"><span>Password' + (isSignup ? ' (min. 6 characters)' : '') + '</span><input id="a-pw" type="password" maxlength="128" autocomplete="' + (isSignup ? 'new-password' : 'current-password') + '" placeholder="••••••••"></label>' +
       (isSignup ? '<label class="field"><span>Confirm password</span><input id="a-pw2" type="password" maxlength="128" autocomplete="new-password" placeholder="••••••••"></label>' : '') +
       (S.authError ? '<div class="error">' + esc(S.authError) + '</div>' : '') +
@@ -673,6 +700,46 @@
     return body + '</div>';
   }
 
+  function renderSheetRow(b) {
+    var when = b.time ? apptWhen(b.time) : '';
+    return '<div class="apptcard"><div class="apptmain"><strong class="appttitle">' + esc(b.name || '—') + '</strong>' +
+      '<span class="apptwhen">' + esc(when) + '</span>' +
+      (b.style ? '<span class="apptstyle">' + esc(b.style) + '</span>' : '') +
+      (b.phone ? '<span class="apptmeta">' + esc(b.phone) + '</span>' : '') +
+      (b.email ? '<span class="apptmeta">' + esc(b.email) + '</span>' : '') +
+      '</div></div>';
+  }
+
+  function renderAdmin() {
+    var a = S.admin || { authed: false };
+    var body = '<div class="anim wide"><button type="button" class="linkback" onclick="App.goHome()">← Back</button>';
+    if (!a.authed) {
+      body += '<p class="kicker">Staff only</p><h2 class="title">Admin sign in</h2>' +
+        '<p class="sub">View the booking timesheet.</p>' +
+        '<form class="authcard" onsubmit="return App.adminLogin()">' +
+        '<label class="field"><span>Email</span><input id="ad-email" type="email" maxlength="255" autocomplete="email" inputmode="email" placeholder="you@example.com"></label>' +
+        '<label class="field"><span>Password</span><input id="ad-pw" type="password" maxlength="128" autocomplete="current-password" placeholder="••••••••"></label>' +
+        (a.error ? '<div class="error">' + esc(a.error) + '</div>' : '') +
+        '<button type="submit" class="cta"' + (a.busy ? ' disabled' : '') + '>' + (a.busy ? 'Please wait…' : 'Sign in') + '</button></form>';
+    } else {
+      var rows = a.sheet || [];
+      body += '<div class="accthead"><div><p class="kicker">Timesheet</p><h2 class="title">Upcoming bookings</h2>' +
+        '<p class="sub">' + rows.length + ' upcoming · ' + esc(a.email) + '</p></div>' +
+        '<div class="rowbtns"><button type="button" class="btn-outline" onclick="App.adminRefresh()">Refresh</button>' +
+        '<button type="button" class="btn-outline" onclick="App.adminSignOut()">Sign out</button></div></div>';
+      if (a.loading) {
+        body += '<div class="skel"><div class="shimmer"></div>Loading…</div>';
+      } else if (a.error) {
+        body += '<div class="error">' + esc(a.error) + '</div>';
+      } else if (!rows.length) {
+        body += '<div class="emptystate"><p>No upcoming bookings.</p></div>';
+      } else {
+        body += rows.map(renderSheetRow).join('');
+      }
+    }
+    return body + '</div>';
+  }
+
   function renderApptCard(b) {
     var r = S.resched;
     var isR = r && r.id === b.Id;
@@ -719,6 +786,7 @@
     else if (S.view === 'auth') main = renderAuth();
     else if (S.view === 'forgot') main = renderForgot();
     else if (S.view === 'mybookings') main = S.account ? renderMyBookings() : renderAuth();
+    else if (S.view === 'admin') main = renderAdmin();
     else if (S.view === 'booking') {
       main = S.step === 1 ? renderSchedule() : S.step === 2 ? renderDetails() : renderDone();
     }
