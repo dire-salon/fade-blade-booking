@@ -804,6 +804,21 @@
   }
 
   /* ---------- admin dashboard ---------- */
+  function renderAdminLogin(a) {
+    return '<div class="authcard"><p class="kicker">Admin</p><h2 class="title">Admin sign in</h2>' +
+      '<p class="sub">Staff only. Bookings data loads after sign in.</p>' +
+      (a.error ? '<div class="error">' + esc(a.error) + '</div>' : '') +
+      '<form onsubmit="return App.adminLogin()">' +
+      '<label class="field"><span>Admin email</span><input id="adm-email" type="email" autocomplete="username" value="' + esc(a.email || '') + '"></label>' +
+      '<label class="field"><span>Password</span><input id="adm-pass" type="password" autocomplete="current-password"></label>' +
+      '<button class="cta" type="submit"' + (a.loading ? ' disabled' : '') + '>' + (a.loading ? 'Signing in…' : 'Sign in') + '</button>' +
+      '</form></div>';
+  }
+  function renderAdmin() {
+    var a = S.admin || { authed: false };
+    if (!a.authed) return renderAdminLogin(a);
+    return '<div class="wrap narrow">' + renderAdminDash(a) + '</div>';
+  }
   function calKey(y, m) { return y + '-' + m; }
   function dayBookings(list, ds) {
     return (list || []).filter(function (b) { return b.time && tzDateStr(b.time) === ds; });
