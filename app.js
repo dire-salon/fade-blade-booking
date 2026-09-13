@@ -7,12 +7,12 @@
   var SESSION_KEY = 'fb_pub_account';
 
   var STYLES = [
-    { id: 'skin-fade', name: 'Signature Skin Fade', price: '$35', mins: '40 min', desc: 'Zero-blend fade with a crisp lineup', img: 'assets/style-skin-fade.jpg?v=2' },
-    { id: 'taper', name: 'Classic Taper', price: '$30', mins: '30 min', desc: 'Clean sides with a natural finish', img: 'assets/style-taper.jpg?v=2' },
-    { id: 'buzz', name: 'Buzz Cut', price: '$25', mins: '20 min', desc: 'Sharp and low-maintenance', img: 'assets/style-buzz.jpg?v=2' },
-    { id: 'curly', name: 'Curly Top + Fade', price: '$38', mins: '45 min', desc: 'Defined curls, faded sides', img: 'assets/style-curly.jpg?v=2' },
-    { id: 'beard', name: 'Beard Sculpt', price: '$20', mins: '20 min', desc: 'Razor-sharp edges, hot-towel finish', img: 'assets/style-beard.jpg?v=2' },
-    { id: 'kids', name: 'Kids Cut', price: '$25', mins: '30 min', desc: 'Patient and kid-friendly, 12 & under', img: 'assets/style-kids.jpg?v=2' }
+    { id: 'skin-fade', name: 'Signature Skin Fade', price: '$35', mins: '40 min', desc: 'Zero-blend fade with a crisp lineup', img: 'assets/style-skin-fade.jpg?v=3' },
+    { id: 'taper', name: 'Classic Taper', price: '$30', mins: '30 min', desc: 'Clean sides with a natural finish', img: 'assets/style-taper.jpg?v=3' },
+    { id: 'buzz', name: 'Buzz Cut', price: '$25', mins: '20 min', desc: 'Sharp and low-maintenance', img: 'assets/style-buzz.jpg?v=3' },
+    { id: 'curly', name: 'Curly Top + Fade', price: '$38', mins: '45 min', desc: 'Defined curls, faded sides', img: 'assets/style-curly.jpg?v=3' },
+    { id: 'beard', name: 'Beard Sculpt', price: '$20', mins: '20 min', desc: 'Razor-sharp edges, hot-towel finish', img: 'assets/style-beard.jpg?v=3' },
+    { id: 'kids', name: 'Kids Cut', price: '$25', mins: '30 min', desc: 'Patient and kid-friendly, 12 & under', img: 'assets/style-kids.jpg?v=3' }
   ];
   var CARRIERS = ['AT&T', 'Verizon', 'T-Mobile', 'Sprint', 'Boost Mobile', 'Cricket', 'Metro by T-Mobile', 'US Cellular', 'Google Fi'];
   var BIZ_ADDR = '946 Sligo Ave, Silver Spring, MD 20910';
@@ -182,7 +182,7 @@
       App.goHome();
     },
     setTab: function (mode) { S.authMode = mode; S.authError = ''; render(); },
-    pickDate: function (d) { S.date = d; S.time = ''; S.error = ''; render(); loadTaken(); },
+    pickDate: function (d) { if (isSunday(d)) return; S.date = d; S.time = ''; S.error = ''; render(); loadTaken(); },
     pickTime: function (t) { S.time = t; S.error = ''; render(); },
     pickStyle: function (id) { S.selectedStyle = (S.selectedStyle === id) ? '' : id; render(); },
     clearStyle: function () { S.selectedStyle = ''; render(); },
@@ -379,7 +379,7 @@
   };
   App.closeResched = function () { S.resched = null; render(); };
   App.pickReschedDate = function (d) {
-    if (!S.resched) return;
+    if (!S.resched || isSunday(d)) return;
     S.resched.date = d; S.resched.time = ''; S.resched.error = ''; S.resched.loading = true;
     render(); loadReschedTaken();
   };
@@ -428,16 +428,21 @@
   /* ---------- rendering ---------- */
   var appEl = document.getElementById('app');
 
+  function isSunday(dateStr) { return new Date(dateStr + 'T12:00:00').getDay() === 0; }
+
   function dateRail(dateStr, activeCls, onpick) {
     var days = [];
     for (var i = 0; i < DAY_COUNT; i++) days.push(addDaysStr(todayStr(), i));
     return '<div class="daterail">' + days.map(function (d) {
       var dt = new Date(d + 'T12:00:00');
-      var cls = d === dateStr ? 'datecard-active' : 'datecard';
-      return '<button type="button" class="' + cls + '" onclick="' + onpick + '(\'' + d + '\')">' +
-        '<span class="dcdow">' + dt.toLocaleDateString(undefined, { weekday: 'short' }) + '</span>' +
-        '<span class="dcnum">' + dt.getDate() + '</span>' +
-        '<span class="dcmon">' + dt.toLocaleDateString(undefined, { month: 'short' }) + '</span></button>';
+      var closed = isSunday(d);
+      var cls = d === dateStr ? 'datecard-active' : (closed ? 'datecard-closed' : 'datecard');
+      var label = closed
+        ? '<span class="dcdow">Sun</span><span class="dcnum">' + dt.getDate() + '</span><span class="dcmon">Closed</span>'
+        : '<span class="dcdow">' + dt.toLocaleDateString(undefined, { weekday: 'short' }) + '</span>' +
+          '<span class="dcnum">' + dt.getDate() + '</span>' +
+          '<span class="dcmon">' + dt.toLocaleDateString(undefined, { month: 'short' }) + '</span>';
+      return '<button type="button" class="' + cls + '"' + (closed ? ' disabled aria-disabled="true"' : ' onclick="' + onpick + '(\'' + d + '\')"') + '>' + label + '</button>';
     }).join('') + '</div>';
   }
 
