@@ -809,8 +809,8 @@
       '<p class="sub">Staff only. Bookings data loads after sign in.</p>' +
       (a.error ? '<div class="error">' + esc(a.error) + '</div>' : '') +
       '<form onsubmit="return App.adminLogin()">' +
-      '<label class="field"><span>Admin email</span><input id="adm-email" type="email" autocomplete="username" value="' + esc(a.email || '') + '"></label>' +
-      '<label class="field"><span>Password</span><input id="adm-pass" type="password" autocomplete="current-password"></label>' +
+      '<label class="field"><span>Admin email</span><input id="ad-email" type="email" autocomplete="username" value="' + esc(a.email || '') + '"></label>' +
+      '<label class="field"><span>Password</span><input id="ad-pw" type="password" autocomplete="current-password"></label>' +
       '<button class="cta" type="submit"' + (a.loading ? ' disabled' : '') + '>' + (a.loading ? 'Signing in…' : 'Sign in') + '</button>' +
       '</form></div>';
   }
