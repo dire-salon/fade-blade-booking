@@ -208,6 +208,7 @@
         S.admin.calCache = {}; S.admin.calDay = ''; S.admin.calLoading = false;
         S.admin.customers = null; S.admin.custQ = ''; S.admin.custLoading = false;
         S.admin.mailOpen = false;
+        S.admin.mvOpen = false;
         render(); window.scrollTo(0, 0);
       }).catch(function (err) {
         S.admin.busy = false; S.admin.loading = false; S.admin.error = err.message; render();
@@ -244,13 +245,25 @@
       if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
       a.calM = m; a.calY = y; a.calDay = ''; a.error = ''; render();
       loadCalMonth(a, y, m);
+      var el = document.getElementById('calhead'); if (el && el.scrollIntoView) el.scrollIntoView();
     },
     adminCalDay: function (ds) {
       var a = S.admin; if (!a) return;
       a.calDay = (a.calDay === ds) ? '' : ds; render();
+      var el = document.getElementById('daypanel'); if (el && el.scrollIntoView) el.scrollIntoView();
     },
-    adminSearch: function (v) { var a = S.admin; if (!a) return; a.q = v; render(); refocus('adm-q'); },
-    adminCustQ: function (v) { var a = S.admin; if (!a) return; a.custQ = v; render(); refocus('adm-cq'); },
+    adminSearch: function (v) {
+      var a = S.admin; if (!a) return;
+      a.q = v;
+      var el = document.getElementById('adm-list');
+      if (el) el.innerHTML = upcomingListHTML(a);
+    },
+    adminCustQ: function (v) {
+      var a = S.admin; if (!a) return;
+      a.custQ = v;
+      var el = document.getElementById('adm-clist');
+      if (el) el.innerHTML = customersListHTML(a);
+    },
     adminDateF: function (v) { var a = S.admin; if (!a) return; a.dateF = v; render(); },
     openMailer: function (btn) {
       var a = S.admin; if (!a) return;
@@ -272,6 +285,40 @@
         a.mailDone = 'Email sent to ' + (a.mailName || a.mailTo) + '.';
         a.mailSubject = ''; a.mailBody = ''; render();
       }).catch(function (err) { a.mailBusy = false; a.mailError = err.message; render(); });
+    },
+    openMover: function (btn) {
+      var a = S.admin; if (!a) return;
+      a.mvOpen = true; a.mvDone = ''; a.mvError = ''; a.mvBusy = false; a.mvLoading = false;
+      a.mvId = btn.getAttribute('data-id');
+      a.mvName = btn.getAttribute('data-name');
+      a.mvEmail = btn.getAttribute('data-email');
+      var t = btn.getAttribute('data-time');
+      a.mvWhen = t ? fmtDate(t) + ' · ' + fmtTime(t) : '';
+      a.mvOrigDate = t ? tzDateStr(t) : '';
+      a.mvOrigHHMM = t ? tzHHMM(t) : '';
+      a.mvDate = a.mvOrigDate || todayStr();
+      a.mvTime = ''; a.mvTaken = [];
+      render(); mvLoadSlots(a);
+    },
+    closeMover: function () { var a = S.admin; if (!a) return; a.mvOpen = false; render(); },
+    mvDateChange: function (v) {
+      var a = S.admin; if (!a) return;
+      a.mvDate = v; a.mvTime = ''; a.mvError = '';
+      if (isSunday(v)) { a.mvTaken = []; a.mvError = 'Closed on Sundays — pick another day.'; render(); return; }
+      render(); mvLoadSlots(a);
+    },
+    mvPickTime: function (t) { var a = S.admin; if (!a) return; a.mvTime = t; a.mvError = ''; render(); },
+    mvConfirm: function () {
+      var a = S.admin; if (!a || a.mvBusy) return;
+      if (!a.mvDate || isSunday(a.mvDate)) { a.mvError = 'Pick a valid date (not Sunday).'; render(); return; }
+      if (!a.mvTime) { a.mvError = 'Pick a time slot.'; render(); return; }
+      a.mvBusy = true; a.mvError = ''; render();
+      api('adminmove', { email: a.email, hash: a.hash, id: a.mvId, time: wallToISO(a.mvDate, a.mvTime) }).then(function (data) {
+        a.mvBusy = false;
+        if (!data || !data.ok) throw new Error('Could not update. Please try again.');
+        a.mvDone = 'Time updated — ' + (a.mvName || 'customer') + ' was emailed the new time.';
+        render(); App.adminRefresh();
+      }).catch(function (err) { a.mvBusy = false; a.mvError = err.message; render(); });
     },
     adminSignOut: function () { S.admin = null; App.goHome(); },
     setTab: function (mode) { S.authMode = mode; S.authError = ''; render(); },
@@ -765,9 +812,17 @@
   function prettyDay(ds) {
     return new Date(ds + 'T12:00:00').toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
   }
-  function refocus(id) {
-    var el = document.getElementById(id);
-    if (el) { try { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } catch (e) {} }
+  function fmtDate(iso) {
+    return new Intl.DateTimeFormat(undefined, { timeZone: TZ, weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(iso));
+  }
+  function fmtTime(iso) {
+    return new Intl.DateTimeFormat(undefined, { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+  }
+  function fmtPhone(p) {
+    var d = digitsOnly(p || '');
+    if (d.length === 10) return '(' + d.slice(0, 3) + ') ' + d.slice(3, 6) + '-' + d.slice(6);
+    if (d.length === 11 && d.charAt(0) === '1') return '+1 (' + d.slice(1, 4) + ') ' + d.slice(4, 7) + '-' + d.slice(7);
+    return p || '';
   }
   function loadCalMonth(a, y, m) {
     var k = calKey(y, m);
@@ -788,39 +843,62 @@
       a.customers = data.customers || []; render();
     }).catch(function (err) { a.custLoading = false; a.error = err.message; render(); });
   }
-  function mailButton(email, name) {
-    if (!email) return '';
-    return '<div class="apptactions"><button type="button" class="minibtn" data-email="' + esc(email) +
-      '" data-name="' + esc(name || '') + '" onclick="App.openMailer(this)">Email</button></div>';
+  function bookingCard(b) {
+    var tel = b.phone ? 'tel:' + esc(digitsOnly(b.phone)) : '';
+    var h = '<div class="bcard"><div class="brow1"><span class="bname">' + esc(b.name || '—') + '</span>' +
+      (b.time ? '<span class="btimepill">' + esc(fmtTime(b.time)) + '</span>' : '') + '</div>';
+    if (b.time) h += '<div class="bdate">' + esc(fmtDate(b.time)) + '</div>';
+    if (b.phone || b.email) {
+      h += '<div class="bcontact">' +
+        (b.phone ? '<a href="' + tel + '">' + esc(fmtPhone(b.phone)) + '</a>' : '') +
+        (b.email ? '<span>' + esc(b.email) + '</span>' : '') + '</div>';
+    }
+    h += '<div class="bactions">';
+    if (b.phone) h += '<a class="minibtn" href="' + tel + '">Call</a>';
+    if (b.email) h += '<button type="button" class="minibtn" data-email="' + esc(b.email) + '" data-name="' + esc(b.name || '') + '" onclick="App.openMailer(this)">Email</button>';
+    h += '<button type="button" class="minibtn" data-id="' + esc(b.id) + '" data-name="' + esc(b.name || '') +
+      '" data-email="' + esc(b.email || '') + '" data-time="' + esc(b.time || '') +
+      '" onclick="App.openMover(this)">Change time</button></div></div>';
+    return h;
   }
-  function renderAdminRow(b) {
-    var when = b.time ? apptWhen(b.time) : '';
-    return '<div class="apptcard"><div class="apptmain"><strong class="appttitle">' + esc(b.name || '—') + '</strong>' +
-      '<span class="apptwhen">' + esc(when) + '</span>' +
-      (b.phone ? '<span class="apptmeta">' + esc(b.phone) + '</span>' : '') +
-      (b.email ? '<span class="apptmeta">' + esc(b.email) + '</span>' : '') +
-      '</div>' + mailButton(b.email, b.name) + '</div>';
+  function customerCard(c) {
+    var tel = c.phone ? 'tel:' + esc(digitsOnly(c.phone)) : '';
+    var h = '<div class="bcard"><div class="brow1"><span class="bname">' + esc(c.name || '—') + '</span></div>' +
+      '<div class="bcontact">' +
+      (c.phone ? '<a href="' + tel + '">' + esc(fmtPhone(c.phone)) + '</a>' : '') +
+      (c.email ? '<span>' + esc(c.email) + '</span>' : '') + '</div>' +
+      '<div class="bactions">';
+    if (c.phone) h += '<a class="minibtn" href="' + tel + '">Call</a>';
+    if (c.email) h += '<button type="button" class="minibtn" data-email="' + esc(c.email) + '" data-name="' + esc(c.name || '') + '" onclick="App.openMailer(this)">Email</button>';
+    h += '</div></div>';
+    return h;
   }
-  function renderUpcoming(a) {
+  function upcomingFiltered(a) {
     var q = (a.q || '').toLowerCase();
-    var rows = (a.sheet || []).filter(function (b) {
+    return (a.sheet || []).filter(function (b) {
       if (a.dateF && (!b.time || tzDateStr(b.time) !== a.dateF)) return false;
       if (!q) return true;
       return (b.name || '').toLowerCase().indexOf(q) >= 0 ||
         (b.phone || '').toLowerCase().indexOf(q) >= 0 ||
         (b.email || '').toLowerCase().indexOf(q) >= 0;
     });
+  }
+  function upcomingListHTML(a) {
+    if (a.loading) return '<div class="skel"><div class="shimmer"></div>Loading…</div>';
+    var rows = upcomingFiltered(a);
+    if (!rows.length) return '<div class="emptystate"><p>No bookings match.</p></div>';
+    return '<p class="listcount">' + rows.length + ' shown</p>' + rows.map(bookingCard).join('');
+  }
+  function renderUpcoming(a) {
     var h = '<div class="stat3">' +
       '<div class="stat"><b>' + (a.sheet || []).length + '</b><span>Upcoming</span></div>' +
       '<div class="stat"><b>' + dayBookings(a.sheet, todayStr()).length + '</b><span>Today</span></div>' +
       '<div class="stat"><b>' + (a.customers ? a.customers.length : '—') + '</b><span>Customers</span></div></div>';
-    h += '<div class="admtools"><input id="adm-q" class="admq grow" type="search" placeholder="Search name, phone, email…" value="' +
-      esc(a.q || '') + '" oninput="App.adminSearch(this.value)">' +
-      '<input id="adm-date" class="admdate" type="date" value="' + esc(a.dateF || '') +
-      '" onchange="App.adminDateF(this.value)" aria-label="Filter by date"></div>';
-    if (a.loading) h += '<div class="skel"><div class="shimmer"></div>Loading…</div>';
-    else if (!rows.length) h += '<div class="emptystate"><p>No bookings match.</p></div>';
-    else h += '<p class="sub">' + rows.length + ' shown</p>' + rows.map(renderAdminRow).join('');
+    h += '<input id="adm-q" class="admq" type="search" placeholder="Search name, phone, email…" value="' +
+      esc(a.q || '') + '" oninput="App.adminSearch(this.value)" onsearch="App.adminSearch(this.value)">' +
+      '<input id="adm-date" class="admq" type="date" value="' + esc(a.dateF || '') +
+      '" onchange="App.adminDateF(this.value)" aria-label="Filter by date">';
+    h += '<div id="adm-list">' + upcomingListHTML(a) + '</div>';
     return h;
   }
   function renderCalendar(a) {
@@ -833,7 +911,7 @@
     var first = new Date(y, m - 1, 1).getDay();
     var dim = new Date(y, m, 0).getDate();
     var tds = todayStr();
-    var h = '<div class="calhead"><button type="button" class="calnav" onclick="App.adminCalNav(-1)" aria-label="Previous month">‹</button>' +
+    var h = '<div class="calhead" id="calhead"><button type="button" class="calnav" onclick="App.adminCalNav(-1)" aria-label="Previous month">‹</button>' +
       '<h3>' + monthName(y, m) + ' ' + y + '</h3>' +
       '<button type="button" class="calnav" onclick="App.adminCalNav(1)" aria-label="Next month">›</button></div>';
     h += '<div class="caldow"><span>SU</span><span>MO</span><span>TU</span><span>WE</span><span>TH</span><span>FR</span><span>SA</span></div><div class="calgrid">';
@@ -850,40 +928,38 @@
     else if (a.error) h += '<div class="error">' + esc(a.error) + '</div>';
     if (a.calDay) {
       var dayList = dayBookings(list, a.calDay);
-      h += '<div class="daypanel"><h3 class="h3">' + esc(prettyDay(a.calDay)) + ' · ' + dayList.length + ' booked</h3>';
-      h += dayList.length ? dayList.map(renderAdminRow).join('') : '<div class="emptystate"><p>No bookings this day.</p></div>';
+      h += '<div class="daypanel" id="daypanel"><h3 class="h3">' + esc(prettyDay(a.calDay)) + ' · ' + dayList.length + ' booked</h3>';
+      h += dayList.length ? dayList.map(bookingCard).join('') : '<div class="emptystate"><p>No bookings this day.</p></div>';
       h += '</div>';
     } else {
       h += '<p class="note">Tap a day to see who booked.</p>';
     }
     return h;
   }
-  function renderCustomers(a) {
+  function customersFiltered(a) {
     var q = (a.custQ || '').toLowerCase();
-    var list = (a.customers || []).filter(function (c) {
+    return (a.customers || []).filter(function (c) {
       if (!q) return true;
       return (c.name || '').toLowerCase().indexOf(q) >= 0 ||
         (c.phone || '').toLowerCase().indexOf(q) >= 0 ||
         (c.email || '').toLowerCase().indexOf(q) >= 0;
     });
-    var h = '<div class="admtools"><input id="adm-cq" class="admq grow" type="search" placeholder="Search customers…" value="' +
-      esc(a.custQ || '') + '" oninput="App.adminCustQ(this.value)"></div>';
-    if (a.custLoading) h += '<div class="skel"><div class="shimmer"></div>Loading…</div>';
-    else if (a.error) h += '<div class="error">' + esc(a.error) + '</div>';
-    else if (!list.length) h += '<div class="emptystate"><p>No customers found.</p></div>';
-    else {
-      h += '<p class="sub">' + list.length + ' customers</p>' + list.map(function (c) {
-        return '<div class="apptcard"><div class="apptmain"><strong class="appttitle">' + esc(c.name || '—') + '</strong>' +
-          (c.phone ? '<span class="apptmeta">' + esc(c.phone) + '</span>' : '') +
-          (c.email ? '<span class="apptmeta">' + esc(c.email) + '</span>' : '') +
-          '</div>' + mailButton(c.email, c.name) + '</div>';
-      }).join('');
-    }
-    return h;
+  }
+  function customersListHTML(a) {
+    if (a.custLoading) return '<div class="skel"><div class="shimmer"></div>Loading…</div>';
+    if (a.error) return '<div class="error">' + esc(a.error) + '</div>';
+    var list = customersFiltered(a);
+    if (!list.length) return '<div class="emptystate"><p>No customers found.</p></div>';
+    return '<p class="listcount">' + list.length + ' customers</p>' + list.map(customerCard).join('');
+  }
+  function renderCustomers(a) {
+    return '<input id="adm-cq" class="admq" type="search" placeholder="Search customers…" value="' +
+      esc(a.custQ || '') + '" oninput="App.adminCustQ(this.value)" onsearch="App.adminCustQ(this.value)">' +
+      '<div id="adm-clist">' + customersListHTML(a) + '</div>';
   }
   function renderMailer(a) {
     var h = '<div class="mailwrap"><div class="mailcard">';
-    h += '<p class="kicker">Email customer</p><p class="sub" style="margin-bottom:4px"><strong>' +
+    h += '<p class="kicker">Email customer</p><p class="msub"><strong>' +
       esc(a.mailName || a.mailTo) + '</strong><br>' + esc(a.mailTo) + '</p>';
     if (a.mailDone) h += '<div class="mailsent">' + esc(a.mailDone) + '</div>';
     if (a.mailError) h += '<div class="error">' + esc(a.mailError) + '</div>';
@@ -897,14 +973,46 @@
     h += '</div></div>';
     return h;
   }
+  function mvLoadSlots(a) {
+    if (!a.mvDate || isSunday(a.mvDate)) { a.mvTaken = []; render(); return; }
+    a.mvLoading = true; render();
+    api('slots', { date: a.mvDate }).then(function (data) {
+      var items = data.items || [], taken = [];
+      for (var i = 0; i < items.length; i++) {
+        if (!items[i].Time) continue;
+        if (tzDateStr(items[i].Time) !== a.mvDate) continue;
+        var hhmm = tzHHMM(items[i].Time);
+        if (a.mvDate === a.mvOrigDate && hhmm === a.mvOrigHHMM) continue;
+        taken.push(hhmm);
+      }
+      a.mvTaken = taken; a.mvLoading = false; render();
+    }).catch(function () { a.mvTaken = []; a.mvLoading = false; render(); });
+  }
+  function renderMover(a) {
+    var h = '<div class="mailwrap"><div class="mailcard">';
+    h += '<p class="kicker">Change booking time</p><p class="msub"><strong>' + esc(a.mvName || '—') + '</strong><br>' +
+      (a.mvWhen ? esc(a.mvWhen) : '') + '</p>';
+    if (a.mvDone) h += '<div class="mailsent">' + esc(a.mvDone) + '</div>';
+    if (a.mvError) h += '<div class="error">' + esc(a.mvError) + '</div>';
+    h += '<label class="field"><span>New date</span><input id="mv-date" type="date" value="' + esc(a.mvDate || '') +
+      '" min="' + esc(todayStr()) + '" onchange="App.mvDateChange(this.value)"></label>';
+    if (a.mvLoading) h += '<div class="skel"><div class="shimmer"></div>Checking availability…</div>';
+    else if (a.mvDate && !isSunday(a.mvDate)) h += timeGrid(a.mvDate, a.mvTaken || [], a.mvTime, 'App.mvPickTime');
+    h += '<div class="mailrow"><button type="button" class="cta" style="flex:1;margin:0"' +
+      (a.mvBusy ? ' disabled' : '') + ' onclick="App.mvConfirm()">' + (a.mvBusy ? 'Updating…' : 'Confirm change') + '</button>' +
+      '<button type="button" class="btn-outline" onclick="App.closeMover()">Cancel</button></div>';
+    h += '<p class="note">The customer is emailed automatically about the new time.</p>';
+    h += '</div></div>';
+    return h;
+  }
   function renderAdminDash(a) {
     var tabs = [['upcoming', 'Upcoming'], ['calendar', 'Calendar'], ['customers', 'Customers']];
-    var h = '<div class="accthead"><div><p class="kicker">Admin</p><h2 class="title">Dashboard</h2>' +
-      '<p class="sub">' + esc(a.email) + '</p></div>' +
-      '<div class="rowbtns"><button type="button" class="btn-outline" onclick="App.adminRefresh()">Refresh</button>' +
+    var h = '<div class="admhead"><div class="admbrand"><span class="admavatar">DS</span>' +
+      '<div class="admtitles"><strong>Dire Salon</strong><span class="admpill">Admin</span></div></div>' +
+      '<div class="rowbtns"><button type="button" class="iconbtn" onclick="App.adminRefresh()" aria-label="Refresh">↻</button>' +
       '<button type="button" class="btn-outline" onclick="App.adminSignOut()">Sign out</button></div></div>';
-    h += '<div class="admtabs">' + tabs.map(function (t) {
-      return '<button type="button" class="admtab' + (a.tab === t[0] ? ' admtab-on' : '') +
+    h += '<div class="seg">' + tabs.map(function (t) {
+      return '<button type="button" class="segbtn' + (a.tab === t[0] ? ' seg-on' : '') +
         '" onclick="App.adminTab(\'' + t[0] + '\')">' + t[1] + '</button>';
     }).join('') + '</div>';
     if (a.tab === 'calendar') {
@@ -917,26 +1025,9 @@
       h += renderUpcoming(a);
     }
     if (a.mailOpen) h += renderMailer(a);
+    if (a.mvOpen) h += renderMover(a);
     return h;
   }
-
-  function renderAdmin() {
-    var a = S.admin || { authed: false };
-    var body = '<div class="anim wide"><button type="button" class="linkback" onclick="App.goHome()">← Back</button>';
-    if (!a.authed) {
-      body += '<p class="kicker">Staff only</p><h2 class="title">Admin sign in</h2>' +
-        '<p class="sub">View the booking timesheet.</p>' +
-        '<form class="authcard" onsubmit="return App.adminLogin()">' +
-        '<label class="field"><span>Email</span><input id="ad-email" type="email" maxlength="255" autocomplete="email" inputmode="email" placeholder="you@example.com"></label>' +
-        '<label class="field"><span>Password</span><input id="ad-pw" type="password" maxlength="128" autocomplete="current-password" placeholder="••••••••"></label>' +
-        (a.error ? '<div class="error">' + esc(a.error) + '</div>' : '') +
-        '<button type="submit" class="cta"' + (a.busy ? ' disabled' : '') + '>' + (a.busy ? 'Please wait…' : 'Sign in') + '</button></form>';
-    } else {
-      body += renderAdminDash(a);
-    }
-    return body + '</div>';
-  }
-
   function renderApptCard(b) {
     var r = S.resched;
     var isR = r && r.id === b.Id;
