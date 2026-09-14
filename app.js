@@ -26,6 +26,7 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
   function digitsOnly(s) { return String(s == null ? '' : s).replace(/\D/g, ''); }
+  function spin(t, light) { return '<span class="spinner' + (light ? ' light' : '') + '"></span>' + t; }
   function normEmail(s) { return (s || '').trim().toLowerCase(); }
 
   // Eastern (shop-local) calendar helpers
@@ -288,7 +289,7 @@
       if (!pw) { S.admin.error = 'Please enter your password.'; render(); return false; }
       S.admin.busy = true; S.admin.error = '';
       var loginBtn = document.getElementById('ad-login-btn');
-      if (loginBtn) { loginBtn.disabled = true; loginBtn.textContent = 'Signing in…'; }
+      if (loginBtn) { loginBtn.disabled = true; loginBtn.innerHTML = spin('Signing in…'); }
       var loginHash = '';
       api('salt', { email: email }).then(function (r) {
         if (!r.salt) throw new Error('No account found for this email.');
@@ -423,17 +424,18 @@
       }).catch(function (err) { a.mvBusy = false; a.mvError = err.message; render(); });
     },
     adminCancel: function (id) {
-      var a = S.admin; if (!a || !a.authed) return;
+      var a = S.admin; if (!a || !a.authed || a.cancelId) return;
       var b = null;
       (a.sheet || []).forEach(function (x) { if (String(x.id) === String(id)) b = x; });
       if (!b) return;
       var when = b.time ? (fmtDate(b.time) + ' at ' + fmtTime(b.time)) : 'this booking';
       if (!window.confirm('Cancel the booking for "' + (b.name || 'customer') + '" (' + when + ')? The customer will be emailed. This cannot be undone.')) return;
-      a.error = ''; render();
+      a.cancelId = id; a.error = ''; render();
       api('admincancel', { email: a.email, hash: a.hash, id: id }).then(function (data) {
+        a.cancelId = null;
         if (!data || !data.ok) throw new Error((data && data.error) || 'Cancel failed. Please try again.');
         App.adminRefresh();
-      }).catch(function (err) { a.error = err.message; render(); });
+      }).catch(function (err) { a.cancelId = null; a.error = err.message; render(); });
     },
     adminSignOut: function () { clearAdminSession(); S.admin = null; App.goHome(); },
     setTab: function (mode) { S.authMode = mode; S.authError = ''; render(); },
@@ -863,7 +865,7 @@
         '<label class="field"><span>Choose a password</span><input id="q-pw" type="password" maxlength="128" autocomplete="new-password" placeholder="Min. 6 characters"></label>' +
         (S.quickError ? '<div class="error">' + esc(S.quickError) + '</div>' : '') +
         '<button type="submit" class="btn-primary" ' + (S.quickBusy ? 'disabled' : '') + '>' +
-        (S.quickBusy ? 'Creating…' : 'Create account for ' + esc(c.email)) + '</button></form>';
+        (S.quickBusy ? spin('Creating…') : 'Create account for ' + esc(c.email)) + '</button></form>';
     }
     if (S.quickDone && S.account) {
       body += '<div class="quickdone">Account created — you\'re signed in as ' + esc(S.account.name) + '.' +
@@ -889,7 +891,7 @@
       '<label class="field"><span>Password' + (isSignup ? ' (min. 6 characters)' : '') + '</span><input id="a-pw" type="password" maxlength="128" autocomplete="' + (isSignup ? 'new-password' : 'current-password') + '" placeholder="••••••••"></label>' +
       (isSignup ? '<label class="field"><span>Confirm password</span><input id="a-pw2" type="password" maxlength="128" autocomplete="new-password" placeholder="••••••••"></label>' : '') +
       (S.authError ? '<div class="error">' + esc(S.authError) + '</div>' : '') +
-      '<button type="submit" class="cta" ' + (S.authBusy ? 'disabled' : '') + '>' + (S.authBusy ? 'Please wait…' : isSignup ? 'Create account' : 'Sign in') + '</button>' +
+      '<button type="submit" class="cta" ' + (S.authBusy ? 'disabled' : '') + '>' + (S.authBusy ? spin('Please wait…') : isSignup ? 'Create account' : 'Sign in') + '</button>' +
       (!isSignup ? '<p class="note"><button type="button" class="inlinelink" onclick="App.goForgot()">Forgot password?</button></p><p class="note">New here? <button type="button" class="inlinelink" onclick="App.setTab(\'signup\')">Create an account</button></p>' : '') +
       '</form></div>';
   }
@@ -907,14 +909,14 @@
         '<label class="field"><span>New password (min. 6 characters)</span><input id="f-pw" type="password" maxlength="128" autocomplete="new-password" placeholder="••••••••"></label>' +
         '<label class="field"><span>Confirm new password</span><input id="f-pw2" type="password" maxlength="128" autocomplete="new-password" placeholder="••••••••"></label>' +
         (f.error ? '<div class="error">' + esc(f.error) + '</div>' : '') +
-        '<button type="submit" class="cta" ' + (f.busy ? 'disabled' : '') + '>' + (f.busy ? 'Please wait…' : 'Reset password') + '</button>' +
+        '<button type="submit" class="cta" ' + (f.busy ? 'disabled' : '') + '>' + (f.busy ? spin('Please wait…') : 'Reset password') + '</button>' +
         '<p class="note">Didn\'t get it? <button type="button" class="inlinelink" onclick="App.goForgot()">Send a new code</button></p></form>';
     } else {
       inner = '<form class="authcard" onsubmit="return App.sendResetCode()">' +
         '<p class="note">Enter your account email and we\'ll send you a 6-digit reset code.</p>' +
         '<label class="field"><span>Email</span><input id="f-email" type="email" maxlength="255" autocomplete="email" inputmode="email" placeholder="you@example.com"></label>' +
         (f.error ? '<div class="error">' + esc(f.error) + '</div>' : '') +
-        '<button type="submit" class="cta" ' + (f.busy ? 'disabled' : '') + '>' + (f.busy ? 'Sending…' : 'Send reset code') + '</button></form>';
+        '<button type="submit" class="cta" ' + (f.busy ? 'disabled' : '') + '>' + (f.busy ? spin('Sending…') : 'Send reset code') + '</button></form>';
     }
     return '<div class="anim center"><button type="button" class="linkback" onclick="App.goAuth(\'signin\')">← Back to sign in</button>' +
       '<p class="kicker">Account recovery</p><h2 class="title">Reset your password</h2>' + inner + '</div>';
@@ -933,14 +935,14 @@
         '<label class="field"><span>New password (min. 6 characters)</span><input id="af-pw" type="password" maxlength="128" autocomplete="new-password" placeholder="••••••••"></label>' +
         '<label class="field"><span>Confirm new password</span><input id="af-pw2" type="password" maxlength="128" autocomplete="new-password" placeholder="••••••••"></label>' +
         (f.error ? '<div class="error">' + esc(f.error) + '</div>' : '') +
-        '<button type="submit" class="cta" ' + (f.busy ? 'disabled' : '') + '>' + (f.busy ? 'Please wait…' : 'Reset password') + '</button>' +
+        '<button type="submit" class="cta" ' + (f.busy ? 'disabled' : '') + '>' + (f.busy ? spin('Please wait…') : 'Reset password') + '</button>' +
         '<p class="note">Didn\'t get it? <button type="button" class="inlinelink" onclick="App.goAdminForgot()">Send a new code</button></p></form>';
     } else {
       inner = '<form class="authcard" onsubmit="return App.sendAdminCode()">' +
         '<p class="note">Enter your admin email and we\'ll send you a 6-digit reset code.</p>' +
         '<label class="field"><span>Admin email</span><input id="af-email" type="email" maxlength="255" autocomplete="email" inputmode="email" placeholder="you@example.com"></label>' +
         (f.error ? '<div class="error">' + esc(f.error) + '</div>' : '') +
-        '<button type="submit" class="cta" ' + (f.busy ? 'disabled' : '') + '>' + (f.busy ? 'Sending…' : 'Send reset code') + '</button></form>';
+        '<button type="submit" class="cta" ' + (f.busy ? 'disabled' : '') + '>' + (f.busy ? spin('Sending…') : 'Send reset code') + '</button></form>';
     }
     return '<div class="anim center"><button type="button" class="linkback" onclick="App.goAdmin()">← Back to admin sign in</button>' +
       '<p class="kicker">Admin</p><h2 class="title">Reset admin password</h2>' + inner + '</div>';
@@ -989,7 +991,7 @@
       '<form onsubmit="return App.adminLogin(event)">' +
       '<label class="field"><span>Admin email</span><input id="ad-email" type="email" autocomplete="username" value="' + esc(a.email || '') + '"></label>' +
       '<label class="field"><span>Password</span><input id="ad-pw" type="password" autocomplete="current-password"></label>' +
-      '<button id="ad-login-btn" class="cta" type="submit"' + (a.busy ? ' disabled' : '') + '>' + (a.busy ? 'Signing in…' : 'Sign in') + '</button>' +
+      '<button id="ad-login-btn" class="cta" type="submit"' + (a.busy ? ' disabled' : '') + '>' + (a.busy ? spin('Signing in…') : 'Sign in') + '</button>' +
       '<p class="note"><button type="button" class="inlinelink" onclick="App.goAdminForgot()">Forgot password?</button></p>' +
       '</form></div>';
   }
@@ -1060,10 +1062,11 @@
       a.customers = data.customers || []; render();
     }).catch(function (err) { a.custLoading = false; a.error = err.message; render(); });
   }
-  function bookingCard(b) {
+  function bookingCard(b, a) {
     var tel = b.phone ? 'tel:' + esc(digitsOnly(b.phone)) : '';
     var name = b.name || '—';
     var initial = (name.trim().charAt(0) || '•').toUpperCase();
+    var cancelling = !!(a && a.cancelId && String(a.cancelId) === String(b.id));
     var h = '<div class="bcard"><div class="btop"><span class="bavatar" aria-hidden="true">' + esc(initial) + '</span>' +
       '<div class="binfo"><span class="bname">' + esc(name) + '</span>';
     if (b.phone) {
@@ -1075,8 +1078,10 @@
     h += '<button type="button" class="minibtn accent" data-id="' + esc(b.id) + '" data-name="' + esc(name) +
       '" data-email="' + esc(strSafe(b.email)) + '" data-time="' + esc(strSafe(b.time)) +
       '" onclick="App.openMover(this)">Change time</button>' +
-      '<button type="button" class="minibtn dangerbtn" data-id="' + esc(b.id) +
-      '" onclick="App.adminCancel(this.getAttribute(\'data-id\'))">Cancel</button></div></div>';
+      (cancelling
+        ? '<button type="button" class="minibtn dangerbtn" disabled>' + spin('Cancelling…', true) + '</button></div></div>'
+        : '<button type="button" class="minibtn dangerbtn" data-id="' + esc(b.id) +
+          '" onclick="App.adminCancel(this.getAttribute(\'data-id\'))">Cancel</button></div></div>');
     return h;
   }
   function customerCard(c) {
@@ -1128,7 +1133,7 @@
         h += '<h4 class="dayhead">' + esc(ds ? dayLabel(ds) : 'No date') + '</h4>';
         lastDs = ds;
       }
-      h += bookingCard(b);
+      h += bookingCard(b, a);
     });
     return h;
   }
@@ -1224,7 +1229,7 @@
     h += '<label class="field"><span>Message</span><textarea id="mail-body" maxlength="2000" placeholder="Write your message…">' +
       esc(a.mailBody || '') + '</textarea></label>';
     h += '<div class="mailrow"><button type="button" class="cta" style="flex:1;margin:0"' +
-      (a.mailBusy ? ' disabled' : '') + ' onclick="App.sendMail()">' + (a.mailBusy ? 'Sending…' : 'Send email') + '</button>' +
+      (a.mailBusy ? ' disabled' : '') + ' onclick="App.sendMail()">' + (a.mailBusy ? spin('Sending…') : 'Send email') + '</button>' +
       '<button type="button" class="btn-outline" onclick="App.closeMailer()">Close</button></div>';
     h += '</div></div>';
     return h;
@@ -1255,7 +1260,7 @@
     if (a.mvLoading) h += '<div class="skel"><div class="shimmer"></div>Checking availability…</div>';
     else if (a.mvDate && !isSunday(a.mvDate)) h += timeGrid(a.mvDate, a.mvTaken || [], a.mvTime, 'App.mvPickTime');
     h += '<div class="mailrow"><button type="button" class="cta" style="flex:1;margin:0"' +
-      (a.mvBusy ? ' disabled' : '') + ' onclick="App.mvConfirm()">' + (a.mvBusy ? 'Updating…' : 'Confirm change') + '</button>' +
+      (a.mvBusy ? ' disabled' : '') + ' onclick="App.mvConfirm()">' + (a.mvBusy ? spin('Updating…') : 'Confirm change') + '</button>' +
       '<button type="button" class="btn-outline" onclick="App.closeMover()">Cancel</button></div>';
     h += '<p class="note">The customer is emailed automatically about the new time.</p>';
     h += '</div></div>';
@@ -1315,7 +1320,7 @@
       inner = '<button type="button" class="cta" onclick="App.goDetails()">Continue</button>';
     } else if (S.view === 'booking' && S.step === 2) {
       inner = '<div class="cta-row"><button type="button" class="backbtn" onclick="App.backToSchedule()">Back</button>' +
-        '<button type="button" class="cta" ' + (S.submitting ? 'disabled' : '') + ' onclick="App.submitDetails()">' + (S.submitting ? 'Booking…' : 'Confirm booking') + '</button></div>';
+        '<button type="button" class="cta" ' + (S.submitting ? 'disabled' : '') + ' onclick="App.submitDetails()">' + (S.submitting ? spin('Booking…') : 'Confirm booking') + '</button></div>';
     } else if (S.view === 'booking' && S.step === 3) {
       inner = '<div class="cta-row"><button type="button" class="backbtn" onclick="App.goHome()">Home</button>' +
         '<button type="button" class="cta" onclick="App.bookAnother()">Book another</button></div>';
@@ -1335,7 +1340,8 @@
     else if (S.view === 'booking') {
       main = S.step === 1 ? renderSchedule() : S.step === 2 ? renderDetails() : renderDone();
     }
-    appEl.innerHTML = renderHeader() + '<main>' + main + '</main>' + renderActionBar();
+    appEl.innerHTML = renderHeader() + '<main>' + main + '</main>' + renderActionBar() +
+      (S.submitting ? '<div class="loadveil" aria-hidden="true"><div class="veilcard"><span class="spinner light big"></span><p>Booking your appointment…</p></div></div>' : '');
   }
 
   if (!FB_CONFIG.apiUrl || FB_CONFIG.apiUrl.indexOf('__API_URL__') >= 0) {
