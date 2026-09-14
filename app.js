@@ -142,6 +142,32 @@
   function clearSession() {
     try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
   }
+  /* ---------- admin session (survives refresh) ---------- */
+  var ADMIN_SESSION_KEY = 'ds_admin_session';
+  function saveAdminSession(s) {
+    try { localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(s)); } catch (e) {}
+  }
+  function readAdminSession() {
+    try {
+      var raw = localStorage.getItem(ADMIN_SESSION_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function clearAdminSession() {
+    try { localStorage.removeItem(ADMIN_SESSION_KEY); } catch (e) {}
+  }
+  function freshAdminState(email, hash) {
+    var _now = new Date();
+    return {
+      authed: true, email: email, hash: hash,
+      sheet: [], loading: true, tab: 'upcoming',
+      q: '', dateF: '', dchip: 'all', sortDesc: false,
+      calY: _now.getFullYear(), calM: _now.getMonth() + 1,
+      calCache: {}, calDay: '', calLoading: false,
+      customers: null, custQ: '', custLoading: false,
+      mailOpen: false, mvOpen: false, error: ''
+    };
+  }
 
   /* ---------- api ---------- */
   var ERRORS = {
@@ -239,7 +265,18 @@
       App.goHome();
     },
     goAdmin: function () {
-      S.view = 'admin'; S.admin = S.admin || { authed: false };
+      S.view = 'admin';
+      var a = S.admin;
+      if ((!a || !a.authed)) {
+        var saved = readAdminSession();
+        if (saved && saved.email && saved.hash) {
+          S.admin = freshAdminState(saved.email, saved.hash);
+          render(); window.scrollTo(0, 0);
+          App.adminRefresh();
+          return;
+        }
+        S.admin = S.admin || { authed: false };
+      }
       render(); window.scrollTo(0, 0);
     },
     adminLogin: function (ev) {
@@ -261,14 +298,10 @@
       }).then(function (data) {
         S.admin.busy = false; S.admin.loading = false;
         if (!data || !data.ok) throw new Error('Not authorized.');
-        S.admin.authed = true; S.admin.sheet = data.bookings || [];
-        S.admin.tab = 'upcoming'; S.admin.q = ''; S.admin.dateF = '';
-        var _now = new Date();
-        S.admin.calY = _now.getFullYear(); S.admin.calM = _now.getMonth() + 1;
-        S.admin.calCache = {}; S.admin.calDay = ''; S.admin.calLoading = false;
-        S.admin.customers = null; S.admin.custQ = ''; S.admin.custLoading = false;
-        S.admin.mailOpen = false;
-        S.admin.mvOpen = false;
+        S.admin = freshAdminState(email, hash);
+        S.admin.sheet = data.bookings || [];
+        S.admin.loading = false;
+        saveAdminSession({ email: email, hash: hash });
         render(); window.scrollTo(0, 0);
       }).catch(function (err) {
         S.admin.busy = false; S.admin.loading = false; S.admin.error = err.message; render();
@@ -296,7 +329,12 @@
           a.loading = false;
           if (!data || !data.ok) throw new Error('Not authorized.');
           a.sheet = data.bookings || []; render();
-        }).catch(function (err) { a.loading = false; a.error = err.message; render(); });
+        }).catch(function (err) {
+          a.loading = false;
+          if (err.message === 'Not authorized.') { clearAdminSession(); S.admin = { authed: false, error: 'Session expired. Please sign in again.' }; }
+          else a.error = err.message;
+          render();
+        });
       }
     },
     adminCalNav: function (d) {
@@ -383,7 +421,20 @@
         render(); App.adminRefresh();
       }).catch(function (err) { a.mvBusy = false; a.mvError = err.message; render(); });
     },
-    adminSignOut: function () { S.admin = null; App.goHome(); },
+    adminCancel: function (id) {
+      var a = S.admin; if (!a || !a.authed) return;
+      var b = null;
+      (a.sheet || []).forEach(function (x) { if (String(x.id) === String(id)) b = x; });
+      if (!b) return;
+      var when = b.time ? (fmtDate(b.time) + ' at ' + fmtTime(b.time)) : 'this booking';
+      if (!window.confirm('Cancel the booking for "' + (b.name || 'customer') + '" (' + when + ')? The customer will be emailed. This cannot be undone.')) return;
+      a.error = ''; render();
+      api('admincancel', { email: a.email, hash: a.hash, id: id }).then(function (data) {
+        if (!data || !data.ok) throw new Error((data && data.error) || 'Cancel failed. Please try again.');
+        App.adminRefresh();
+      }).catch(function (err) { a.error = err.message; render(); });
+    },
+    adminSignOut: function () { clearAdminSession(); S.admin = null; App.goHome(); },
     setTab: function (mode) { S.authMode = mode; S.authError = ''; render(); },
     pickDate: function (d) { if (isSunday(d)) return; S.date = d; S.time = ''; S.error = ''; render(); loadTaken(); },
     pickTime: function (t) { S.time = t; S.error = ''; render(); },
@@ -1026,7 +1077,9 @@
     if (b.email) h += '<button type="button" class="minibtn" data-email="' + esc(b.email) + '" data-name="' + esc(name) + '" onclick="App.openMailer(this)">Email</button>';
     h += '<button type="button" class="minibtn accent" data-id="' + esc(b.id) + '" data-name="' + esc(name) +
       '" data-email="' + esc(strSafe(b.email)) + '" data-time="' + esc(strSafe(b.time)) +
-      '" onclick="App.openMover(this)">Change time</button></div></div>';
+      '" onclick="App.openMover(this)">Change time</button>' +
+      '<button type="button" class="minibtn dangerbtn" data-id="' + esc(b.id) +
+      '" onclick="App.adminCancel(this.getAttribute(\'data-id\'))">Cancel</button></div></div>';
     return h;
   }
   function customerCard(c) {

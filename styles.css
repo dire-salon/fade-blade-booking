@@ -424,7 +424,7 @@ input.admq:focus { border-color: var(--gold); }
 .bcontact { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
 .bcontact a { color: var(--text); font-size: 15px; font-weight: 700; text-decoration: none; }
 .bcontact span { color: var(--faint); font-size: 13px; }
-.bactions { display: flex; gap: 8px; }
+.bactions { display: flex; gap: 8px; flex-wrap: wrap; }
 .bactions .minibtn { flex: 1; text-align: center; text-decoration: none; line-height: 1.5; font-size: 12.5px; padding: 11px 6px; }
 .calhead { display: flex; align-items: center; justify-content: space-between; margin: 16px 0 10px; scroll-margin-top: 78px; }
 .calhead h3 { margin: 0; font-family: var(--display); font-size: 20px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
