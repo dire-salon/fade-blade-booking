@@ -26,7 +26,7 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
   function digitsOnly(s) { return String(s == null ? '' : s).replace(/\D/g, ''); }
-  function spin(t, light) { return '<span class="spinner' + (light ? ' light' : '') + '"></span>' + t; }
+  function spin(t, dark) { return '<span class="spinner' + (dark ? ' dark' : '') + '"></span>' + t; }
   function normEmail(s) { return (s || '').trim().toLowerCase(); }
 
   // Eastern (shop-local) calendar helpers
@@ -780,8 +780,7 @@
       '<button type="button" class="btn-outline" onclick="document.getElementById(\'bb-styles\').scrollIntoView({behavior:\'smooth\'})">View services</button></div>' +
       '<div class="hero-stats"><div><strong>4.9</strong><span>2k+ reviews</span></div><div><strong>15 min</strong><span>Avg. wait</span></div><div><strong>Free</strong><span>Parking</span></div></div>' +
       '</div></section>' +
-      '<div class="marquee" aria-hidden="true"><div class="marquee-inner"><span>Skin fade ◆ Taper ◆ Buzz cut ◆ Curly top ◆ Beard sculpt ◆ Kids cut ◆&nbsp;</span><span>Skin fade ◆ Taper ◆ Buzz cut ◆ Curly top ◆ Beard sculpt ◆ Kids cut ◆&nbsp;</span></div></div>' +
-      '<section id="bb-styles" class="section"><p class="kicker">01 — Services</p><h2 class="title">Signature cuts</h2>' +
+      '<section id="bb-styles" class="section"><p class="kicker">Services</p><h2 class="title">Signature cuts</h2>' +
       '<p class="sub">The work we\'re known for. Tap a service to book it.</p><div class="stylegrid">' +
       STYLES.map(function (s) {
         return '<button type="button" class="stylecard" onclick="App.goBooking(\'' + s.id + '\')">' +
@@ -790,15 +789,19 @@
           '<span class="styledesc">' + esc(s.desc) + '</span>' +
           '<span class="stylemeta"><span>' + s.mins + '</span><span class="bookhint">Tap to book →</span></span></span></button>';
       }).join('') + '</div></section>' +
-      '<section class="section"><p class="kicker">02 — Why us</p><h2 class="title">The Dire Salon standard</h2><div class="whylist">' +
+      '<section class="section"><p class="kicker">Why us</p><h2 class="title">The Dire Salon standard</h2><div class="whylist">' +
       '<div class="whyrow"><span class="whynum">01</span><div><strong>Master barbers</strong><p>Precision fades and crisp lineups, consistent every visit.</p></div></div>' +
       '<div class="whyrow"><span class="whynum">02</span><div><strong>Zero waiting</strong><p>Your chair is held. Arrive at your time, leave sharp.</p></div></div>' +
       '<div class="whyrow"><span class="whynum">03</span><div><strong>Hot-towel finish</strong><p>Every service ends clean with a hot towel and style.</p></div></div>' +
       '</div></section>' +
-      '<section class="section"><p class="kicker">03 — Visit</p><h2 class="title">Find the shop</h2><div class="visitcard">' +
+      '<section class="section"><p class="kicker">Visit</p><h2 class="title">Find the shop</h2><div class="visitcard">' +
       '<div class="visitrow"><span class="visitlabel">Location</span><div><strong>946 Sligo Ave</strong><p>Silver Spring, MD 20910</p></div></div>' +
       '<div class="visitrow"><span class="visitlabel">Parking</span><div><strong>Parking garage</strong><p>' + GARAGE_ADDR + '</p></div></div>' +
-      '<div class="visitrow"><span class="visitlabel">Hours</span><div><strong>Mon–Fri 9a–7p · Sat 9a–5p · Sun Closed</strong><p>Walk-ins welcome; bookings get priority.</p></div></div>' +
+      '<div class="visitrow"><span class="visitlabel">Hours</span><div class="hours">' +
+      '<div class="hrow"><span>Mon – Fri</span><strong>9:00 AM – 7:00 PM</strong></div>' +
+      '<div class="hrow"><span>Saturday</span><strong>9:00 AM – 5:00 PM</strong></div>' +
+      '<div class="hrow"><span>Sunday</span><strong class="closed">Closed</strong></div>' +
+      '</div></div>' +
       '<div class="visitbtns"><a class="btn-primary" href="' + MAPS_URL + '" target="_blank" rel="noreferrer">Get directions</a>' +
       '<button type="button" class="btn-outline" onclick="App.copyAddress()">Copy address</button></div>' +
       '</div></section>' +
@@ -1341,7 +1344,7 @@
       main = S.step === 1 ? renderSchedule() : S.step === 2 ? renderDetails() : renderDone();
     }
     appEl.innerHTML = renderHeader() + '<main>' + main + '</main>' + renderActionBar() +
-      (S.submitting ? '<div class="loadveil" aria-hidden="true"><div class="veilcard"><span class="spinner light big"></span><p>Booking your appointment…</p></div></div>' : '');
+      (S.submitting ? '<div class="loadveil" aria-hidden="true"><div class="veilcard"><span class="spinner big"></span><p>Booking your appointment…</p></div></div>' : '');
   }
 
   if (!FB_CONFIG.apiUrl || FB_CONFIG.apiUrl.indexOf('__API_URL__') >= 0) {
