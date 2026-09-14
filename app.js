@@ -779,7 +779,7 @@
       '<div class="hero-ctas"><button type="button" class="btn-primary" onclick="App.goBooking()">Book appointment</button>' +
       '<button type="button" class="btn-outline" onclick="document.getElementById(\'bb-styles\').scrollIntoView({behavior:\'smooth\'})">View services</button></div>' +
       '<div class="hero-stats"><div><strong>4.9</strong><span>2k+ reviews</span></div><div><strong>15 min</strong><span>Avg. wait</span></div><div><strong>Free</strong><span>Parking</span></div></div>' +
-      '</div></section>' +
+      '</div></section><div class="stripe" aria-hidden="true"></div>' +
       '<section id="bb-styles" class="section"><p class="kicker">Services</p><h2 class="title">Signature cuts</h2>' +
       '<p class="sub">The work we\'re known for. Tap a service to book it.</p><div class="stylegrid">' +
       STYLES.map(function (s) {
@@ -804,7 +804,7 @@
       '</div></div>' +
       '<div class="visitbtns"><a class="btn-primary" href="' + MAPS_URL + '" target="_blank" rel="noreferrer">Get directions</a>' +
       '<button type="button" class="btn-outline" onclick="App.copyAddress()">Copy address</button></div>' +
-      '</div></section>' +
+      '</div></section><div class="stripe" aria-hidden="true"></div>' +
       '<footer class="homefooter"><div class="footbrand"><span class="mono">DS</span><span class="footname">Dire Salon</span></div>' +
       '<p>' + BIZ_ADDR + '<br>Parking garage nearby · Book in 30 seconds</p>' +
       '<p class="footadmin"><button type="button" class="linklike" onclick="App.goAdmin()">Admin</button></p></footer>' +
@@ -1082,7 +1082,7 @@
       '" data-email="' + esc(strSafe(b.email)) + '" data-time="' + esc(strSafe(b.time)) +
       '" onclick="App.openMover(this)">Change time</button>' +
       (cancelling
-        ? '<button type="button" class="minibtn dangerbtn" disabled>' + spin('Cancelling…', true) + '</button></div></div>'
+        ? '<button type="button" class="minibtn dangerbtn" disabled>' + spin('Cancelling…') + '</button></div></div>'
         : '<button type="button" class="minibtn dangerbtn" data-id="' + esc(b.id) +
           '" onclick="App.adminCancel(this.getAttribute(\'data-id\'))">Cancel</button></div></div>');
     return h;
