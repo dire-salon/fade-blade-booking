@@ -289,19 +289,20 @@
       S.admin.busy = true; S.admin.error = '';
       var loginBtn = document.getElementById('ad-login-btn');
       if (loginBtn) { loginBtn.disabled = true; loginBtn.textContent = 'Signing in…'; }
+      var loginHash = '';
       api('salt', { email: email }).then(function (r) {
         if (!r.salt) throw new Error('No account found for this email.');
         return sha256Hex(r.salt + ':' + pw).then(function (hash) {
-          S.admin.hash = hash; S.admin.email = email;
+          loginHash = hash;
           return api('timesheet', { email: email, hash: hash });
         });
       }).then(function (data) {
         S.admin.busy = false; S.admin.loading = false;
         if (!data || !data.ok) throw new Error('Not authorized.');
-        S.admin = freshAdminState(email, hash);
+        S.admin = freshAdminState(email, loginHash);
         S.admin.sheet = data.bookings || [];
         S.admin.loading = false;
-        saveAdminSession({ email: email, hash: hash });
+        saveAdminSession({ email: email, hash: loginHash });
         render(); window.scrollTo(0, 0);
       }).catch(function (err) {
         S.admin.busy = false; S.admin.loading = false; S.admin.error = err.message; render();
