@@ -25,7 +25,7 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
-  function digitsOnly(s) { return (s || '').replace(/\D/g, ''); }
+  function digitsOnly(s) { return String(s == null ? '' : s).replace(/\D/g, ''); }
   function normEmail(s) { return (s || '').trim().toLowerCase(); }
 
   // Eastern (shop-local) calendar helpers
@@ -1018,7 +1018,7 @@
       if (a.dateF && (!b.time || tzDateStr(b.time) !== a.dateF)) return false;
       if (!q) return true;
       return (b.name || '').toLowerCase().indexOf(q) >= 0 ||
-        (b.phone || '').toLowerCase().indexOf(q) >= 0 ||
+        (b.phone || '').toString().toLowerCase().indexOf(q) >= 0 ||
         (b.email || '').toLowerCase().indexOf(q) >= 0;
     });
   }
