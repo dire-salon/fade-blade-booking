@@ -324,7 +324,10 @@
       var el = document.getElementById('adm-clist');
       if (el) el.innerHTML = customersListHTML(a);
     },
-    adminDateF: function (v) { var a = S.admin; if (!a) return; a.dateF = v; render(); },
+    adminDateF: function (v) { var a = S.admin; if (!a) return; a.dateF = v; a.dchip = v ? 'date' : 'all'; render(); },
+    adminChip: function (c) { var a = S.admin; if (!a) return; a.dchip = c; render(); },
+    adminSort: function () { var a = S.admin; if (!a) return; a.sortDesc = !a.sortDesc; render(); },
+    adminClearFilters: function () { var a = S.admin; if (!a) return; a.q = ''; a.dateF = ''; a.dchip = 'all'; a.sortDesc = false; render(); },
     openMailer: function (btn) {
       var a = S.admin; if (!a) return;
       a.mailOpen = true;
@@ -947,6 +950,29 @@
   function dayBookings(list, ds) {
     return (list || []).filter(function (b) { return b.time && tzDateStr(b.time) === ds; });
   }
+  /* ---------- v17 admin filter helpers ---------- */
+  function addDaysStr(ds, n) {
+    var d = new Date(ds + 'T12:00:00');
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+  function matchChip(b, chip, dateF) {
+    var t = todayStr(), tm = addDaysStr(t, 1), wk = addDaysStr(t, 7);
+    var ds = b.time ? tzDateStr(b.time) : '';
+    if (chip === 'today') return ds === t;
+    if (chip === 'tomorrow') return ds === tm;
+    if (chip === 'week') return ds >= t && ds < wk;
+    if (chip === 'date') return !dateF || ds === dateF;
+    return true;
+  }
+  function dayLabel(ds) {
+    var t = todayStr(), tm = addDaysStr(t, 1);
+    var lbl = new Date(ds + 'T12:00:00').toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    if (ds === t) return 'Today · ' + lbl;
+    if (ds === tm) return 'Tomorrow · ' + lbl;
+    return lbl;
+  }
+  function strSafe(v) { return v == null ? '' : String(v); }
   function monthName(y, m) { return new Date(y, m - 1, 1).toLocaleString(undefined, { month: 'long' }); }
   function prettyDay(ds) {
     return new Date(ds + 'T12:00:00').toLocaleString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -984,59 +1010,100 @@
   }
   function bookingCard(b) {
     var tel = b.phone ? 'tel:' + esc(digitsOnly(b.phone)) : '';
-    var h = '<div class="bcard"><div class="brow1"><span class="bname">' + esc(b.name || '—') + '</span>' +
-      (b.time ? '<span class="btimepill">' + esc(fmtTime(b.time)) + '</span>' : '') + '</div>';
-    if (b.time) h += '<div class="bdate">' + esc(fmtDate(b.time)) + '</div>';
+    var name = b.name || '—';
+    var initial = (name.trim().charAt(0) || '•').toUpperCase();
+    var h = '<div class="bcard"><div class="btop"><span class="bavatar" aria-hidden="true">' + esc(initial) + '</span>' +
+      '<div class="binfo"><span class="bname">' + esc(name) + '</span>';
     if (b.phone || b.email) {
-      h += '<div class="bcontact">' +
+      h += '<span class="bmeta">' +
         (b.phone ? '<a href="' + tel + '">' + esc(fmtPhone(b.phone)) + '</a>' : '') +
-        (b.email ? '<span>' + esc(b.email) + '</span>' : '') + '</div>';
+        (b.phone && b.email ? ' · ' : '') +
+        (b.email ? esc(b.email) : '') + '</span>';
     }
+    h += '</div>' + (b.time ? '<span class="btimepill">' + esc(fmtTime(b.time)) + '</span>' : '') + '</div>';
     h += '<div class="bactions">';
     if (b.phone) h += '<a class="minibtn" href="' + tel + '">Call</a>';
-    if (b.email) h += '<button type="button" class="minibtn" data-email="' + esc(b.email) + '" data-name="' + esc(b.name || '') + '" onclick="App.openMailer(this)">Email</button>';
-    h += '<button type="button" class="minibtn" data-id="' + esc(b.id) + '" data-name="' + esc(b.name || '') +
-      '" data-email="' + esc(b.email || '') + '" data-time="' + esc(b.time || '') +
+    if (b.email) h += '<button type="button" class="minibtn" data-email="' + esc(b.email) + '" data-name="' + esc(name) + '" onclick="App.openMailer(this)">Email</button>';
+    h += '<button type="button" class="minibtn accent" data-id="' + esc(b.id) + '" data-name="' + esc(name) +
+      '" data-email="' + esc(strSafe(b.email)) + '" data-time="' + esc(strSafe(b.time)) +
       '" onclick="App.openMover(this)">Change time</button></div></div>';
     return h;
   }
   function customerCard(c) {
     var tel = c.phone ? 'tel:' + esc(digitsOnly(c.phone)) : '';
-    var h = '<div class="bcard"><div class="brow1"><span class="bname">' + esc(c.name || '—') + '</span></div>' +
-      '<div class="bcontact">' +
+    var name = c.name || '—';
+    var initial = (name.trim().charAt(0) || '•').toUpperCase();
+    var h = '<div class="bcard"><div class="btop"><span class="bavatar" aria-hidden="true">' + esc(initial) + '</span>' +
+      '<div class="binfo"><span class="bname">' + esc(name) + '</span>' +
+      '<span class="bmeta">' +
       (c.phone ? '<a href="' + tel + '">' + esc(fmtPhone(c.phone)) + '</a>' : '') +
-      (c.email ? '<span>' + esc(c.email) + '</span>' : '') + '</div>' +
+      (c.phone && c.email ? ' · ' : '') +
+      (c.email ? esc(c.email) : '') + '</span></div></div>' +
       '<div class="bactions">';
     if (c.phone) h += '<a class="minibtn" href="' + tel + '">Call</a>';
-    if (c.email) h += '<button type="button" class="minibtn" data-email="' + esc(c.email) + '" data-name="' + esc(c.name || '') + '" onclick="App.openMailer(this)">Email</button>';
+    if (c.email) h += '<button type="button" class="minibtn" data-email="' + esc(c.email) + '" data-name="' + esc(name) + '" onclick="App.openMailer(this)">Email</button>';
     h += '</div></div>';
     return h;
   }
   function upcomingFiltered(a) {
     var q = (a.q || '').toLowerCase();
-    return (a.sheet || []).filter(function (b) {
-      if (a.dateF && (!b.time || tzDateStr(b.time) !== a.dateF)) return false;
+    var chip = a.dchip || 'all';
+    var rows = (a.sheet || []).filter(function (b) {
+      if (!matchChip(b, chip, a.dateF)) return false;
       if (!q) return true;
       return (b.name || '').toLowerCase().indexOf(q) >= 0 ||
-        (b.phone || '').toString().toLowerCase().indexOf(q) >= 0 ||
+        strSafe(b.phone).toLowerCase().indexOf(q) >= 0 ||
         (b.email || '').toLowerCase().indexOf(q) >= 0;
     });
+    rows.sort(function (x, y) {
+      var tx = x.time || '', ty = y.time || '';
+      if (tx === ty) return 0;
+      if (!tx) return 1;
+      if (!ty) return -1;
+      var cmp = tx < ty ? -1 : 1;
+      return a.sortDesc ? -cmp : cmp;
+    });
+    return rows;
   }
   function upcomingListHTML(a) {
     if (a.loading) return '<div class="skel"><div class="shimmer"></div>Loading…</div>';
     var rows = upcomingFiltered(a);
-    if (!rows.length) return '<div class="emptystate"><p>No bookings match.</p></div>';
-    return '<p class="listcount">' + rows.length + ' shown</p>' + rows.map(bookingCard).join('');
+    if (!rows.length) return '<div class="emptystate"><p>No bookings match these filters.</p>' +
+      '<button type="button" class="inlinelink" onclick="App.adminClearFilters()">Clear filters</button></div>';
+    var h = '<p class="listcount">' + rows.length + ' shown</p>';
+    var lastDs = '~~~';
+    rows.forEach(function (b) {
+      var ds = b.time ? tzDateStr(b.time) : '';
+      if (ds !== lastDs) {
+        h += '<h4 class="dayhead">' + esc(ds ? dayLabel(ds) : 'No date') + '</h4>';
+        lastDs = ds;
+      }
+      h += bookingCard(b);
+    });
+    return h;
   }
   function renderUpcoming(a) {
+    var chip = a.dchip || 'all';
+    var weekCount = (a.sheet || []).filter(function (b) { return matchChip(b, 'week'); }).length;
     var h = '<div class="stat3">' +
       '<div class="stat"><b>' + (a.sheet || []).length + '</b><span>Upcoming</span></div>' +
       '<div class="stat"><b>' + dayBookings(a.sheet, todayStr()).length + '</b><span>Today</span></div>' +
-      '<div class="stat"><b>' + (a.customers ? a.customers.length : '—') + '</b><span>Customers</span></div></div>';
-    h += '<input id="adm-q" class="admq" type="search" placeholder="Search name, phone, email…" value="' +
+      '<div class="stat"><b>' + weekCount + '</b><span>This week</span></div></div>';
+    var chips = [['all', 'All'], ['today', 'Today'], ['tomorrow', 'Tomorrow'], ['week', 'This week']];
+    h += '<div class="fchips">';
+    chips.forEach(function (c) {
+      h += '<button type="button" class="fchip' + (chip === c[0] ? ' fchip-on' : '') +
+        '" onclick="App.adminChip(\'' + c[0] + '\')">' + c[1] + '</button>';
+    });
+    h += '<label class="fchip fdate' + (chip === 'date' ? ' fchip-on' : '') + '" aria-label="Pick a date">' +
+      '<span>Pick date</span><input type="date" value="' + esc(a.dateF || '') +
+      '" onchange="App.adminDateF(this.value)"></label>';
+    h += '</div>';
+    h += '<div class="ftools">' +
+      '<input id="adm-q" class="admq" type="search" placeholder="Search name, phone, email…" value="' +
       esc(a.q || '') + '" oninput="App.adminSearch(this.value)" onsearch="App.adminSearch(this.value)">' +
-      '<input id="adm-date" class="admq" type="date" value="' + esc(a.dateF || '') +
-      '" onchange="App.adminDateF(this.value)" aria-label="Filter by date">';
+      '<button type="button" class="sortbtn" onclick="App.adminSort()" aria-label="Toggle sort order">' +
+      (a.sortDesc ? '↓ Latest' : '↑ Earliest') + '</button></div>';
     h += '<div id="adm-list">' + upcomingListHTML(a) + '</div>';
     return h;
   }
@@ -1080,7 +1147,7 @@
     return (a.customers || []).filter(function (c) {
       if (!q) return true;
       return (c.name || '').toLowerCase().indexOf(q) >= 0 ||
-        (c.phone || '').toLowerCase().indexOf(q) >= 0 ||
+        strSafe(c.phone).toLowerCase().indexOf(q) >= 0 ||
         (c.email || '').toLowerCase().indexOf(q) >= 0;
     });
   }
@@ -1146,10 +1213,10 @@
   }
   function renderAdminDash(a) {
     var tabs = [['upcoming', 'Upcoming'], ['calendar', 'Calendar'], ['customers', 'Customers']];
-    var h = '<div class="admhead"><div class="admbrand"><span class="admavatar">DS</span>' +
-      '<div class="admtitles"><strong>Dire Salon</strong><span class="admpill">Admin</span></div></div>' +
-      '<div class="rowbtns"><button type="button" class="iconbtn" onclick="App.adminRefresh()" aria-label="Refresh">↻</button>' +
-      '<button type="button" class="btn-outline" onclick="App.adminSignOut()">Sign out</button></div></div>';
+    var h = '<div class="admhero"><div class="admbrand"><span class="admavatar">DS</span>' +
+      '<div class="admtitles"><strong>Dire Salon</strong><span>Admin console</span></div></div>' +
+      '<button type="button" class="iconbtn" onclick="App.adminRefresh()" aria-label="Refresh">↻</button>' +
+      '<button type="button" class="btn-outline" onclick="App.adminSignOut()">Sign out</button></div>';
     h += '<div class="seg">' + tabs.map(function (t) {
       return '<button type="button" class="segbtn' + (a.tab === t[0] ? ' seg-on' : '') +
         '" onclick="App.adminTab(\'' + t[0] + '\')">' + t[1] + '</button>';
