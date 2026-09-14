@@ -1066,16 +1066,12 @@
     var initial = (name.trim().charAt(0) || '•').toUpperCase();
     var h = '<div class="bcard"><div class="btop"><span class="bavatar" aria-hidden="true">' + esc(initial) + '</span>' +
       '<div class="binfo"><span class="bname">' + esc(name) + '</span>';
-    if (b.phone || b.email) {
-      h += '<span class="bmeta">' +
-        (b.phone ? '<a href="' + tel + '">' + esc(fmtPhone(b.phone)) + '</a>' : '') +
-        (b.phone && b.email ? ' · ' : '') +
-        (b.email ? esc(b.email) : '') + '</span>';
+    if (b.phone) {
+      h += '<span class="bmeta"><a href="' + tel + '">' + esc(fmtPhone(b.phone)) + '</a></span>';
     }
     h += '</div>' + (b.time ? '<span class="btimepill">' + esc(fmtTime(b.time)) + '</span>' : '') + '</div>';
     h += '<div class="bactions">';
     if (b.phone) h += '<a class="minibtn" href="' + tel + '">Call</a>';
-    if (b.email) h += '<button type="button" class="minibtn" data-email="' + esc(b.email) + '" data-name="' + esc(name) + '" onclick="App.openMailer(this)">Email</button>';
     h += '<button type="button" class="minibtn accent" data-id="' + esc(b.id) + '" data-name="' + esc(name) +
       '" data-email="' + esc(strSafe(b.email)) + '" data-time="' + esc(strSafe(b.time)) +
       '" onclick="App.openMover(this)">Change time</button>' +
